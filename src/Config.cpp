@@ -33,7 +33,7 @@ Config::SetDefaults()
 {
 	verbose_          = false;
 	fork_             = false;
-	logging_          = "127.0.0.1:52428";
+	logging_          = "std";
 }
 
 inline std::string

@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <ctime>
-#include <pthread.h>
+#include <mutex>
 
 #include <utils/NxSocket.h>
 
@@ -67,8 +67,8 @@ class LogStream
 		std::ofstream                   file_;
 		std::ostream*                   stream_;
 
-		pthread_mutex_t                 mtx_;
-		pthread_mutex_t                 mtx_r_;
+		std::mutex                      mtx_;
+		std::mutex                      mtx_r_;
 		char                            type_;
 
 		bool                            truncmtu_;

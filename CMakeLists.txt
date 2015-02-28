@@ -30,8 +30,12 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
 
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
+########################################################################
+# threads
 
-###########################################################################
+find_package(Threads REQUIRED)
+
+########################################################################
 # NxSocket
 
 set(NX_SOCKET_SRC

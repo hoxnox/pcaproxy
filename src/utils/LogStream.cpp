@@ -12,10 +12,6 @@
 #include <process.h>
 #endif
 
-#ifndef _THREAD_SAFE
-#define _THREAD_SAFE
-#endif
-
 namespace pcaproxy {
 
 /**@class LogStream
@@ -79,10 +75,6 @@ LogStream::LogStream(const char type /*= 'I'*/) throw (std::exception)
 	, MTU_SAFE_PAYLOAD_SIZE_(512)
 	, stream_(NULL)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_init(&mtx_, NULL);
-	pthread_mutex_init(&mtx_r_, NULL);
-	#endif // _THREAD_SAFE
 	SOCK_INIT();
 	init_default(addr_);
 	sock_ = socket(addr_.ss_family, SOCK_DGRAM, IPPROTO_UDP);
@@ -103,10 +95,6 @@ LogStream::LogStream(struct sockaddr *addr, const char type /*= 'I'*/) throw (st
 	, MTU_SAFE_PAYLOAD_SIZE_(512)
 	, stream_(NULL)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_init(&mtx_, NULL);
-	pthread_mutex_init(&mtx_r_, NULL);
-	#endif // _THREAD_SAFE
 	if(addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
 		init_default(addr_);
 	else
@@ -131,10 +119,6 @@ LogStream::LogStream(std::ostream& ostrm, const char type /*= 'I'*/) throw (std:
 	, MTU_SAFE_PAYLOAD_SIZE_(512)
 	, stream_(NULL)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_init(&mtx_, NULL);
-	pthread_mutex_init(&mtx_r_, NULL);
-	#endif // _THREAD_SAFE
 	stream_ = &ostrm;
 }
 /**@brief Construct LogStream with file logging
@@ -146,10 +130,6 @@ LogStream::LogStream(const std::string filename, const char type /*= 'I'*/) thro
 	, MTU_SAFE_PAYLOAD_SIZE_(512)
 	, stream_(NULL)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_init(&mtx_, NULL);
-	pthread_mutex_init(&mtx_r_, NULL);
-	#endif // _THREAD_SAFE
 	file_.open(filename.c_str(), std::fstream::out | std::fstream::binary);
 	if(!file_.is_open())
 	{
@@ -162,9 +142,7 @@ LogStream::LogStream(const std::string filename, const char type /*= 'I'*/) thro
  * @return 0 on success, negative on error*/
 int LogStream::redirect(const sockaddr *addr, bool copy /*= false*/)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_lock(&mtx_r_);
-	#endif // _THREAD_SAFE
+	std::lock_guard<std::mutex> lock(mtx_r_);
 	if(addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
 		init_default(*(struct sockaddr_storage*)addr);
 	else
@@ -184,9 +162,6 @@ int LogStream::redirect(const sockaddr *addr, bool copy /*= false*/)
 				std::string(_("error opening socket"))
 					+ " \"" + strerror(GET_LAST_SOCK_ERROR()) + "\"");
 	}
-	#ifdef _THREAD_SAFE
-	pthread_mutex_unlock(&mtx_r_);
-	#endif // _THREAD_SAFE
 	return 0;
 }
 
@@ -194,9 +169,7 @@ int LogStream::redirect(const sockaddr *addr, bool copy /*= false*/)
  * @return 0 on success, negative on error*/
 int LogStream::redirect(const std::string filename, bool copy /*= false*/)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_lock(&mtx_r_);
-	#endif // _THREAD_SAFE
+	std::lock_guard<std::mutex> lock(mtx_r_);
 	if(file_.is_open())
 		file_.close();
 	file_.open(filename.c_str(), std::fstream::out | std::fstream::binary);
@@ -207,9 +180,6 @@ int LogStream::redirect(const std::string filename, bool copy /*= false*/)
 		sock_ = INVALID_SOCKET;
 		stream_ = NULL;
 	}
-	#ifdef _THREAD_SAFE
-	pthread_mutex_unlock(&mtx_r_);
-	#endif // _THREAD_SAFE
 	return rs == true ? 0 : -1;
 }
 
@@ -222,9 +192,7 @@ int LogStream::redirect(const std::string filename, bool copy /*= false*/)
 int
 LogStream::redirect(std::ostream& ostrm, bool copy/* = false*/)
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_lock(&mtx_r_);
-	#endif // _THREAD_SAFE
+	std::lock_guard<std::mutex> lock(mtx_r_);
 	stream_ = &ostrm;
 	if(!copy)
 	{
@@ -234,30 +202,19 @@ LogStream::redirect(std::ostream& ostrm, bool copy/* = false*/)
 			file_.close();
 	}
 	bool rs = stream_->good();
-	#ifdef _THREAD_SAFE
-	pthread_mutex_unlock(&mtx_r_);
-	#endif // _THREAD_SAFE
 	return rs == true ? 0 : -1;
 }
 
 LogStream::~LogStream()
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_lock(&mtx_);
-	pthread_mutex_lock(&mtx_r_);
-	#endif // _THREAD_SAFE
+	std::lock_guard<std::mutex> lock(mtx_);
+	std::lock_guard<std::mutex> lock_r(mtx_r_);
 	flush_unsafe();
 	if(file_.is_open())
 		file_.close();
 	/*
 	if(IS_VALID_SOCK(sock_))
 		close(sock_);*/
-	#ifdef _THREAD_SAFE
-	pthread_mutex_unlock(&mtx_);
-	pthread_mutex_destroy(&mtx_);
-	pthread_mutex_unlock(&mtx_r_);
-	pthread_mutex_destroy(&mtx_r_);
-	#endif // _THREAD_SAFE
 }
 
 /**@brief This function is tricky and used with operator<.
@@ -275,9 +232,7 @@ LogStream::~LogStream()
  * @endcode*/
 std::stringstream& LogStream::_stream()
 {
-	#ifdef _THREAD_SAFE
-	pthread_mutex_lock(&mtx_);
-	#endif // _THREAD_SAFE
+	mtx_.lock();
 	std::stringstream *ss = new std::stringstream;
 	Msg msg = {ss, time(NULL)};
 	ss_.push_back(msg);
@@ -290,9 +245,7 @@ std::stringstream& LogStream::_stream()
 LogStream& LogStream::operator< (std::ostream& ss) throw (std::exception)
 {
 	flush_unsafe();
-	#ifdef _THREAD_SAFE
-	pthread_mutex_unlock(&mtx_);
-	#endif // _THREAD_SAFE
+	mtx_.unlock();
 	return *this;
 }
 
@@ -303,9 +256,7 @@ void LogStream::flush_unsafe() throw (std::exception)
 		return;
 	if(!file_.is_open() && !IS_VALID_SOCK(sock_) && stream_ == NULL)
 	{
-		#ifdef _THREAD_SAFE
-		pthread_mutex_unlock(&mtx_);
-		#endif // _THREAD_SAFE
+		mtx_.unlock();
 		throw std::runtime_error("Logger error: file, stream and socket are illegal");
 	}
 	for(std::vector<Msg>::iterator i = ss_.begin();
@@ -323,6 +274,10 @@ void LogStream::flush_unsafe() throw (std::exception)
 			i->sstr = NULL;
 		}
 	}
+	if (file_.is_open())
+		file_.flush();
+	if (stream_ != NULL)
+		stream_->flush();
 	ss_.clear();
 }
 

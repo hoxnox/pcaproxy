@@ -6,6 +6,9 @@
 #include <Logger.hpp>
 #include <utils/NxSocket.h>
 #include <gettext.h>
+#include <unistd.h>
+#include <cstring>
+#include <errno.h>
 
 using namespace pcaproxy;
 
@@ -27,6 +30,33 @@ main(int argc, char* argv[])
 
 	cfg->InitLogStream(Logger::ilog, 'I');
 	cfg->InitLogStream(Logger::ilog, 'E');
+
+	bool forked = false;
+#ifndef WIN32
+	if(cfg->Fork())
+	{
+		pid_t fork_pid = fork();
+		if(fork_pid > 0)
+		{
+			VLOG << _("Forked to ") << fork_pid << std::endl;
+			return 0;
+		}
+		else if(fork_pid == 0)
+		{
+			forked = true;
+			setsid();
+			int rs = chdir("/");
+			if(rs == -1)
+				VLOG << _("chdir error.")
+					<< _(" Message: ") << strerror(errno);
+		}
+		else
+		{
+			ELOG << _("Error forking proccess.") << " "
+				<< _("Message") << ": " << strerror(errno);
+		}
+	}
+#endif
 
 	if (cfg->Verbose())
 		Logger::verbose = true;
