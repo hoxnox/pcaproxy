@@ -30,6 +30,45 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
 
 include_directories("${PROJECT_SOURCE_DIR}/src")
 
+
+###########################################################################
+# NxSocket
+
+set(NX_SOCKET_SRC
+	src/utils/NxSocket.h
+	src/utils/NxSocket.c
+)
+add_library(nx_socket STATIC ${NX_SOCKET_SRC})
+if(NOT WIN32)
+	list(APPEND LIBRARIES pthread)
+endif()
+list(APPEND LIBRARIES nx_socket)
+if(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
+	list(APPEND LIBRARIES socket)
+	list(APPEND LIBRARIES nsl)
+endif()
+
+########################################################################
+# pcaproxy
+
+add_executable(pcaproxy
+	src/pcaproxy.cpp
+
+	src/ProcessManager.hpp
+	src/ProcessManager.cpp
+	src/Logger.hpp
+	src/Logger.cpp
+	src/Config.hpp
+	src/Config.cpp
+
+	src/utils/LogStream.hpp
+	src/utils/LogStream.cpp
+	src/utils/ProcessManagerBase.hpp
+	src/utils/ProcessManagerBase.cpp
+)
+target_link_libraries(pcaproxy ${LIBRARIES})
+set_target_properties(pcaproxy PROPERTIES COMPILE_FLAGS "-std=c++0x")
+
 ########################################################################
 # docs
 
