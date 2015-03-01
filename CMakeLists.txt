@@ -7,8 +7,9 @@ cmake_minimum_required(VERSION 2.6.4)
 ########################################################################
 # options
 
-option(WITH_TESTS "Build tests."  OFF)
-option(WITH_DOCS  "Generate docs" OFF)
+option(WITH_TESTS           "Build tests."  OFF)
+option(WITH_DOCS            "Generate docs" OFF)
+option(WITH_SYSTEM_LIBEVENT "Don't download and build libevent - find system's one" OFF)
 
 ########################################################################
 # general
@@ -36,6 +37,27 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 find_package(Threads REQUIRED)
 
 ########################################################################
+# libevent
+
+if(NOT WITH_SYSTEM_LIBEVENT)
+	include(ExternalProject)
+	set(Event_ROOT "${CMAKE_CURRENT_BINARY_DIR}/libevent")
+	ExternalProject_Add(libevent
+	    URL "https://github.com/libevent/libevent/archive/release-2.0.22-stable.tar.gz"
+	    URL_MD5 "8913ef56ec329f2c046007bd634c7201"
+	    PATCH_COMMAND <SOURCE_DIR>/autogen.sh
+	    CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+	    INSTALL_DIR "${Event_ROOT}"
+	)
+	set(Event_INCLUDE_DIR ${Event_ROOT}/include)
+	set(Event_LIBRARIES ${Event_ROOT}/lib/libevent.a)
+else()
+	find_package(Event REQUIRED)
+endif()
+include_directories(${Event_INCLUDE_DIR})
+list(APPEND LIBRARIES ${Event_LIBRARIES})
+
+########################################################################
 # NxSocket
 
 set(NX_SOCKET_SRC
@@ -56,7 +78,7 @@ endif()
 # pcaproxy
 
 add_executable(pcaproxy
-	src/pcaproxy.cpp
+	src/main.cpp
 
 	src/ProcessManager.hpp
 	src/ProcessManager.cpp
@@ -64,6 +86,8 @@ add_executable(pcaproxy
 	src/Logger.cpp
 	src/Config.hpp
 	src/Config.cpp
+	src/PCAProxy.hpp
+	src/PCAProxy.cpp
 
 	src/utils/LogStream.hpp
 	src/utils/LogStream.cpp

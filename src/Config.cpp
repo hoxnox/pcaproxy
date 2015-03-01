@@ -34,6 +34,9 @@ Config::SetDefaults()
 	verbose_          = false;
 	fork_             = false;
 	logging_          = "std";
+	bind_addr_        = "127.0.0.1:48080";
+	backlog_          = 100;
+	tick_             = {1, 0};
 }
 
 inline std::string
@@ -69,12 +72,13 @@ void Config::InitLogStream(LogStream& log, const char type)
 int
 Config::ParseArgs(int argc, char* argv[])
 {
-	std::string opt_l, opt_c;
+	std::string opt_l, opt_c, opt_b;
 	bool opt_V = false, opt_F = false;
 
-	const char *sopts = "VvFhl:c:";
+	const char *sopts = "VvFhl:c:b:";
 
 	const struct option lopts[] = {
+		{ "bind",              required_argument, NULL, 'b' },
 		{ "verbose",           no_argument,       NULL, 'V' },
 		{ "version",           no_argument,       NULL, 'v' },
 		{ "logging",           required_argument, NULL, 'l' },
@@ -92,6 +96,7 @@ Config::ParseArgs(int argc, char* argv[])
 		switch (opt)
 		{
 			case 'V': opt_V = true; break;
+			case 'b': opt_b = optarg; break;
 			case 'l': opt_l = optarg; break;
 			case 'c': opt_c = optarg; break;
 			case 'F': opt_F = true; break;
@@ -105,6 +110,7 @@ Config::ParseArgs(int argc, char* argv[])
 	if (!opt_c.empty()) LoadFile(opt_c);
 	if (opt_V) verbose_ = true;
 	if (opt_F) fork_    = true;
+	if (!opt_b.empty()) bind_addr_ = opt_b;
 	if (!opt_l.empty()) logging_         = opt_l;
 	return 0;
 }
@@ -179,6 +185,7 @@ Config::GetOptions() const
 	std::stringstream ss;
 	ss << "Options" << std::endl;
 	append_opt(ss, "Verbose"        , Verbose());
+	append_opt(ss, "BindAddr"       , BindAddr());
 	append_opt(ss, "Fork"           , Fork());
 	append_opt(ss, "Logging"        , Logging());
 	return ss.str();
@@ -209,6 +216,7 @@ Config::printHelp() const
 	std::stringstream ss;
 	ss << std::endl << _("Options:") << std::endl;
 	append_hlp(ss, "c", "config"            , ""                 , _("load config from file"));
+	append_hlp(ss, "b", "bind-addr"         , BindAddr()         , _("bind address"));
 	append_hlp(ss, "V", "verbose"           , Verbose()          , _("make a lot of noise"));
 	append_hlp(ss, "F", "fork"              , Fork()             , _("fork to independent process"));
 	append_hlp(ss, "l", "logging"           , Logging()          , _("logging destination"));
@@ -292,6 +300,7 @@ Config::LoadFile(const std::string file, bool silent /* = false*/)
 					divisor + 1, ln.length() - divisor));
 
 		if     (name == "verbose"            ) verbose_          = str2bool(value);
+		else if(name == "bindaddr"           ) bind_addr_        = value;
 		else if(name == "logging"            ) logging_          = value;
 		else if(name == "fork"               ) fork_             = str2bool(value);
 		else
