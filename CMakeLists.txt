@@ -9,7 +9,11 @@ cmake_minimum_required(VERSION 2.6.4)
 
 option(WITH_TESTS           "Build tests."  OFF)
 option(WITH_DOCS            "Generate docs" OFF)
-option(WITH_SYSTEM_LIBEVENT "Don't download and build libevent - find system's one" OFF)
+
+# Don't download and build lib - find system's one if ON
+option(WITH_SYSTEM_LIBPCAP  "Use system's libpcap" OFF)
+option(WITH_SYSTEM_LIBEVENT "Use system's libevent" OFF)
+option(WITH_SYSTEM_LIBNIDS  "Use system's libnids" OFF)
 
 ########################################################################
 # general
@@ -30,6 +34,7 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
                       "${PROJECT_SOURCE_DIR}/cmake/Modules")
 
 include_directories("${PROJECT_SOURCE_DIR}/src")
+set(DEPS_ROOT "${CMAKE_CURRENT_BINARY_DIR}/deps")
 
 ########################################################################
 # threads
@@ -37,20 +42,59 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 find_package(Threads REQUIRED)
 
 ########################################################################
+# libpcap
+
+if(NOT WITH_SYSTEM_LIBPCAP)
+	include(ExternalProject)
+	ExternalProject_Add(libpcap
+		URL "http://www.tcpdump.org/release/libpcap-1.6.2.tar.gz"
+		URL_MD5 "5f14191c1a684a75532c739c2c4059fa"
+		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --disable-shared      --disable-dbus --disable-can         --disable-canusb      --disable-bluetooth --disable-universal   --disable-ipv6        --disable-protochain --disable-largefile  --without-libnl
+		INSTALL_DIR "${DEPS_ROOT}"
+	)
+	set(Pcap_INCLUDE_DIR ${DEPS_ROOT}/include)
+	set(Pcap_LIBRARIES ${DEPS_ROOT}/lib/libpcap.a)
+else()
+	find_package(Pcap REQUIRED)
+endif()
+include_directories(${Pcap_INCLUDE_DIR})
+
+########################################################################
+# libnids
+
+if(NOT WITH_SYSTEM_NIDS)
+	include(ExternalProject)
+	ExternalProject_Add(libnids
+		URL "http://sourceforge.net/projects/libnids/files/libnids/1.24/libnids-1.24.tar.gz/download"
+		URL_MD5 "72d37c79c85615ffe158aa524d649610"
+		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --enable-static --disable-shared --disable-libglib --disable-libnet
+		BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libnids-prefix/src/libnids
+		INSTALL_DIR "${DEPS_ROOT}"
+		INSTALL_COMMAND make install
+		DEPENDS libpcap
+	)
+	set(NIDS_INCLUDE_DIR ${DEPS_ROOT}/include)
+	set(NIDS_LIBRARIES ${DEPS_ROOT}/lib/libnids.a)
+else()
+	find_package(Event REQUIRED)
+endif()
+include_directories(${NIDS_INCLUDE_DIR})
+list(APPEND LIBRARIES ${NIDS_LIBRARIES} ${Pcap_LIBRARIES})
+
+########################################################################
 # libevent
 
 if(NOT WITH_SYSTEM_LIBEVENT)
 	include(ExternalProject)
-	set(Event_ROOT "${CMAKE_CURRENT_BINARY_DIR}/libevent")
 	ExternalProject_Add(libevent
-	    URL "https://github.com/libevent/libevent/archive/release-2.0.22-stable.tar.gz"
-	    URL_MD5 "8913ef56ec329f2c046007bd634c7201"
-	    PATCH_COMMAND <SOURCE_DIR>/autogen.sh
-	    CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
-	    INSTALL_DIR "${Event_ROOT}"
+		URL "https://github.com/libevent/libevent/archive/release-2.0.22-stable.tar.gz"
+		URL_MD5 "8913ef56ec329f2c046007bd634c7201"
+		PATCH_COMMAND <SOURCE_DIR>/autogen.sh
+		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --enable-static --disable-shared
+		INSTALL_DIR "${DEPS_ROOT}"
 	)
-	set(Event_INCLUDE_DIR ${Event_ROOT}/include)
-	set(Event_LIBRARIES ${Event_ROOT}/lib/libevent.a)
+	set(Event_INCLUDE_DIR ${DEPS_ROOT}/include)
+	set(Event_LIBRARIES ${DEPS_ROOT}/lib/libevent.a)
 else()
 	find_package(Event REQUIRED)
 endif()
@@ -69,10 +113,6 @@ if(NOT WIN32)
 	list(APPEND LIBRARIES pthread)
 endif()
 list(APPEND LIBRARIES nx_socket)
-if(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-	list(APPEND LIBRARIES socket)
-	list(APPEND LIBRARIES nsl)
-endif()
 
 ########################################################################
 # pcaproxy
@@ -88,6 +128,8 @@ add_executable(pcaproxy
 	src/Config.cpp
 	src/PCAProxy.hpp
 	src/PCAProxy.cpp
+	src/PCAParser.hpp
+	src/PCAParser.cpp
 
 	src/utils/LogStream.hpp
 	src/utils/LogStream.cpp

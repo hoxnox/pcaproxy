@@ -12,7 +12,6 @@
 
 namespace pcaproxy {
 
-/**@brief Socket initialization*/
 inline int init_sock(const struct sockaddr_storage& addr)
 {
 	SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);

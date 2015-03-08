@@ -22,11 +22,7 @@ main(int argc, char* argv[])
 
 	int rs = cfg->ParseArgs(argc, argv);
 	if(rs != 0)
-	{
-		if(rs < 0)
-			ELOG << _("Error parsing arguments.");
 		return 0;
-	}
 
 	cfg->InitLogStream(Logger::ilog, 'I');
 	cfg->InitLogStream(Logger::ilog, 'E');

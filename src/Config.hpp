@@ -24,12 +24,15 @@ public:
 	std::string GetOptions() const;
 	void        InitLogStream(LogStream& log, const char type);
 
-	bool           Verbose()  const { return verbose_;          }
-	bool           Fork()     const { return fork_;             }
-	std::string    Logging()  const { return logging_;          }
-	std::string    BindAddr() const { return bind_addr_;        }
-	int            Backlog()  const { return backlog_;          }
-	struct timeval Tick()     const { return tick_;             }
+	bool           Verbose()   const { return verbose_;          }
+	bool           Fork()      const { return fork_;             }
+	std::string    Logging()   const { return logging_;          }
+	std::string    BindAddr()  const { return bind_addr_;        }
+	std::string    Filename()  const { return filename_;         }
+	std::string    ParseDir()  const { return parsedir_;         }
+	bool           DontClean() const { return dontclean_;        }
+	int            Backlog()   const { return backlog_;          }
+	struct timeval Tick()      const { return tick_;             }
 
 	static const std::string DEFAULT_CONFIG_FILE;
 	static const std::string DEFAULT_USER_CONFIG_FILE;
@@ -45,7 +48,10 @@ private:
 	static Ptr              instance_;
 	struct sockaddr_storage iaddr_;
 	struct sockaddr_storage eaddr_;
+	std::string             filename_;
 	std::string             bind_addr_;
+	std::string             parsedir_;
+	bool                    dontclean_;
 	int                     backlog_;
 	struct timeval          tick_;
 };
