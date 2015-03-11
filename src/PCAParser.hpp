@@ -12,22 +12,6 @@
 
 namespace pcaproxy {
 
-class HttpReqInfo
-{
-public:
-	std::string Method() const { return method_; };
-	size_t      UrlHash() const { return url_hash_; };
-	static HttpReqInfo fromRequest(const char* data, size_t dataln);
-private:
-	HttpReqInfo()
-		: url_hash_(0)
-	{}
-	std::string method_;
-	size_t      url_hash_;
-	static std::hash<std::string> hashFn;
-};
-
-// This singleton is NOT THREAD SAFE
 class PCAParser
 {
 public:

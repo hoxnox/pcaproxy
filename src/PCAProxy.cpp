@@ -2,13 +2,17 @@
  * @date $date$ */
 
 #include "PCAProxy.hpp"
+#include "HttpReqInfo.hpp"
 
 #include <Logger.hpp>
 #include <Config.hpp>
-#include <utils/NxSocket.h>
+#include <utils/Utils.hpp>
 
 #include <gettext.h>
 #include <cstring>
+#include <string>
+#include <sstream>
+#include <vector>
 
 namespace pcaproxy {
 
@@ -44,50 +48,52 @@ inline int init_sock(const struct sockaddr_storage& addr)
 
 PCAProxy::PCAProxy()
 	: stop_(true)
-	, evbase_(event_base_new(), event_base_free)
-	, evtimeout_(event_new(evbase_.get(), 0, EV_TIMEOUT, heartbeat, this), event_free)
-	, evhttp_(NULL, evhttp_free)
-	, evbuf_(evbuffer_new(), evbuffer_free)
 {
-	Config::Ptr cfg = Config::GetInstance();
 }
 
-void PCAProxy::heartbeat(int, short int, void *self)
-{
-	VLOG << "Heartbeat";
-	if (!self)
-		return;
-	PCAProxy* this_ = reinterpret_cast<PCAProxy*>(self);
-	if (this_->stop_)
-	{
-		event_base_loopbreak(this_->evbase_.get());
-		return;
-	}
-	Config::Ptr cfg = Config::GetInstance();
-	struct timeval tv = cfg->Tick();
-	event_add(this_->evtimeout_.get(), &tv);
-	return;
-}
-
-/**@brief OnRequest callback
- *
- * Fires, when request is coming*/
 void
-PCAProxy::onRequest(struct evhttp_request * req, void * arg)
+PCAProxy::onRequest(int sock, struct sockaddr_storage addr)
 {
-	if(!arg)
+	char buf[0x10000];
+	VLOG << "Request here!";
+	ssize_t rs = read(sock, buf, sizeof(buf));
+	if (rs == -1)
 	{
-		ELOG << _("onRequest bad arg value");
+		ELOG << _("PCAProxy: error reading HTTP request.")
+		     << _(" Message: ") << strerror(errno);
 		return;
 	}
-	if(!req)
+	HttpReqInfo req(buf, rs);
+	if (req.Method() == "")
+	{
+		VLOG << _("PCAProxy: received strange request.")
+		     << _(" Dump: ") << byte2str(buf, rs);
 		return;
-	PCAProxy *this_ = reinterpret_cast<PCAProxy*>(arg);
-	VLOG << _("Request handling: ") << req->uri;
-	std::string answer = "Hello, world!";
-	evbuffer_add(this_->evbuf_.get(), answer.c_str(), answer.length());
-    evhttp_send_reply(req, HTTP_OK, "", this_->evbuf_.get());
-	return;
+	}
+	VLOG << _("PCAProxy: received HTTP request.")
+	     << _(" Method: ") << req.Method()
+	     << _(" UrlHash: ") << req.UrlHash()
+	     << _(" URL: ") << req.Url();
+	std::ifstream ifile(req.FName(), std::ios::in | std::ios::binary);
+	if (!ifile.good())
+	{
+		VLOG << _("PCAProxy: no file corresponds.")
+		     << _(" FileName: ") << req.FName()
+		     << _(" URL: ") << req.Url();
+		return;
+	}
+	std::istreambuf_iterator<char> reader;
+	std::vector<char> fbuf;
+	std::copy(reader, std::istreambuf_iterator<char>(), std::back_inserter(fbuf));
+	rs = send(sock, &fbuf[0], fbuf.size(), 0);
+	if (rs != fbuf.size())
+	{
+		ELOG << _("PCAProxy: error sending data.")
+		     << _(" Sent: ") << rs
+		     << _(" FileName: ") << req.FName()
+		     << _(" URL: ") << req.Url();
+			return;
+	}
 }
 
 void
@@ -110,16 +116,41 @@ PCAProxy::Loop(PCAProxy* this_)
 		     << _(" Message: ") << GET_LAST_SOCK_ERROR();
 		return;
 	}
-	this_->evhttp_.reset(evhttp_new(this_->evbase_.get()));
-	if (evhttp_accept_socket(this_->evhttp_.get(), sock) == -1) {
-		ILOG << "Error evhttp_accept_socket(): "
-		     << strerror(errno) << std::endl;
-		return;
+	while (!this_->stop_)
+	{
+		fd_set rdfs;
+		FD_ZERO(&rdfs);
+		FD_SET(sock, &rdfs);
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+		int rs = select(sock+1, &rdfs, NULL, NULL, &tv);
+		if (rs == -1)
+		{
+			ELOG << _("PCAProxy: error calling select.")
+			     << _(" Message: ") << strerror(errno);
+			break;
+		}
+		if (rs == 0)
+		{
+			// VLOG << _("PCAProxy: Heartbeat");
+			continue;
+		}
+		struct sockaddr_storage raddr;
+		memset(&raddr, 0, sizeof(raddr));
+		socklen_t raddrlen = sizeof(raddr);
+		int nsock = accept(sock, (struct sockaddr*)&raddr, &raddrlen);
+		if (nsock == -1)
+		{
+			ELOG << _("PCAProxy: error calling accept.")
+			     << _(" Message: ") << strerror(errno);
+		}
+		else
+		{
+			onRequest(nsock, raddr);
+			shutdown(nsock, SHUT_RDWR);
+			close(nsock);
+		}
 	}
-	evhttp_set_gencb(this_->evhttp_.get(), PCAProxy::onRequest, this_);
-	event_add(this_->evtimeout_.get(), &tv);
-	event_base_dispatch(this_->evbase_.get());
-	return;
 }
 
 } // namespace

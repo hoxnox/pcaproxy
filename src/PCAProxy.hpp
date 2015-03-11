@@ -5,8 +5,10 @@
 #define   __PCAPROXY_HPP__
 
 #include <memory>
-#include <event.h>
-#include <evhttp.h>
+#include <functional>
+#include <string>
+#include <set>
+#include <utils/NxSocket.h>
 
 namespace pcaproxy {
 
@@ -17,14 +19,9 @@ public:
 	static void Loop(PCAProxy* this_);
 	void Stop() { stop_ = true; }
 private:
-	static void onRequest(struct evhttp_request * req, void* arg);
-	static void heartbeat(int, short int, void* this_);
-
-	bool                        stop_;
-	std::unique_ptr<event_base, void(&)(event_base*)> evbase_;
-	std::unique_ptr<event, void(&)(event*)>           evtimeout_;
-	std::unique_ptr<evhttp, void(&)(evhttp*)>         evhttp_;
-	std::unique_ptr<evbuffer, void(&)(evbuffer*)>     evbuf_;
+	static void onRequest(int sock, struct sockaddr_storage raddr);
+	static std::hash<std::string> hashFun_;
+	bool stop_;
 };
 
 } // namespace
