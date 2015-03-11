@@ -115,6 +115,16 @@ endif()
 list(APPEND LIBRARIES nx_socket)
 
 ########################################################################
+# MkDir
+
+set(MKDIR_SRC
+	src/utils/MkDir.h
+	src/utils/MkDir.c
+)
+add_library(mkdir STATIC ${MKDIR_SRC})
+list(APPEND LIBRARIES mkdir)
+
+########################################################################
 # pcaproxy
 
 add_executable(pcaproxy

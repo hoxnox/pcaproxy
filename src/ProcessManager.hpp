@@ -23,7 +23,6 @@ protected:
 	virtual bool                 doStart();
 	virtual bool                 doStop();
 	PCAProxy                     proxy_;
-	PCAParser                    parser_;
 	std::unique_ptr<std::thread> proxy_thread_;
 	Config* conf_;
 };

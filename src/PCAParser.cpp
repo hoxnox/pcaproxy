@@ -9,13 +9,44 @@
 #include <Logger.hpp>
 #include <Endians.hpp>
 #include <utils/NxSocket.h>
+#include <utils/MkDir.h>
 #include <gettext.h>
 
 #include <cstring>
 #include <string>
 #include <sstream>
+#include <sstream>
+#include <iostream>
+#include <iomanip>
+#include <memory>
+#include <locale>
+#include <functional>
+#include <algorithm>
 
 namespace pcaproxy {
+
+PCAParser::Ptr PCAParser::instance_(NULL);
+
+/**@brief Create directories (recursive)
+ * @note will be created directories before
+ * the last occurring of '/'. For example: "test/my/dirs" will create
+ * "test" and "my", but "test/my/dirs/" creates all of them.*/
+inline bool check_create_dir(std::string path)
+{
+	size_t tmp = path.find_last_of('/');
+	if(tmp == std::string::npos)
+		return true;
+	path = path.substr(0, tmp);
+
+	if (mkpath(path.c_str(),
+			S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0)
+	{
+		ELOG << _("Error creating output directory") << " \""
+			<< path << "\"";
+		return false;
+	}
+	return true;
+}
 
 inline char
 hex2char(unsigned char n)
@@ -50,6 +81,8 @@ byte2str(std::vector<char>& bytes)
 void
 PCAParser::nidsLogger(int type, int err, struct ip *iph, void *data)
 {
+	if (type == 2 && err == 8) // WTF?!
+		return;
 	ILOG << "NIDS error: "
 	     << _(" Message type: ") << type
 	     << _(" Error code: ") << err;
@@ -81,60 +114,162 @@ addr_info(const struct tuple4& addr, std::string delim = "vs")
 	return ss.str();
 }
 
+static inline std::string&
+ltrim(std::string &s)
+{
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+	return s;
+}
+
+static inline std::string&
+rtrim(std::string &s)
+{
+	s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+	return s;
+}
+
+static inline std::string&
+trim(std::string &s)
+{
+	return ltrim(rtrim(s));
+}
+
+std::hash<std::string> HttpReqInfo::hashFn;
+
+HttpReqInfo
+HttpReqInfo::fromRequest(const char* data, size_t dataln)
+{
+	ssize_t i = 0;
+	HttpReqInfo req;
+	for (; std::isalpha(data[i]) && i < 7 && i < dataln; ++i)
+		req.method_ += data[i];
+	if (req.method_ != "OPTIONS"
+	 && req.method_ != "GET"
+	 && req.method_ != "HEAD"
+	 && req.method_ != "POST"
+	 && req.method_ != "PUT"
+	 && req.method_ != "DELETE"
+	 && req.method_ != "TRACE"
+	 && req.method_ != "CONNECT")
+	{
+		return HttpReqInfo();
+	}
+
+	ssize_t left = i;
+	while (data[i] != '\n' && data[i-1] != '\r' && i < dataln)
+		++i;
+	const std::string http_1 = " HTTP/1.1\r\n";
+	if (i - left < http_1.length())
+		return HttpReqInfo();
+	ssize_t right = i - http_1.length();
+	if (std::string(data + right + 1, data + i + 1) != http_1)
+		return HttpReqInfo();
+
+	std::string url(data + left, data + right);
+	trim(url);
+	req.url_hash_ = hashFn(url);
+	VLOG << _("HttpReqInfo: fetched request.")
+	     << _(" Method: ") << req.method_
+	     << _(" URL: ") << url
+	     << _(" URL hash: ") << req.url_hash_;
+	return req;
+}
+
 void
-PCAParser::tcpCallback(struct tcp_stream *stream, void** not_needed)
+PCAParser::tcpCallback(struct tcp_stream *stream, void** params)
 {
 	if (stream->addr.dest != 80 && stream->addr.source != 80)
 	{
 		VLOG << _("PCAParser: skipping traffic: ") << addr_info(stream->addr);
 		return;
 	}
+
+	std::ofstream* ofile = reinterpret_cast<std::ofstream*>(stream->user);
 	if (stream->nids_state == NIDS_JUST_EST)
 	{
 		stream->client.collect++;
 		stream->server.collect++;
+		stream->user = NULL;
 		VLOG << _("PCAParser: TCP ESTABLISHED: ") << addr_info(stream->addr);
 		return;
 	}
-	if (stream->nids_state == NIDS_CLOSE)
+	else if (stream->nids_state == NIDS_DATA)
 	{
-		VLOG << _("PCAParser: TCP CLOSED: ") << addr_info(stream->addr);
-		return;
-	}
-	if (stream->nids_state == NIDS_RESET)
-	{
-		VLOG << _("PCAParser: TCP RESETED: ") << addr_info(stream->addr);
-		return;
-	}
-	if (stream->nids_state == NIDS_DATA)
-	{
-		std::string delim;
-		struct half_stream* hlf;
-		if (stream->client.count_new)
+		if (stream->client.count_new > 0 && ofile != NULL)
 		{
-			delim = "<-";
-			hlf = &stream->client;
+			if (ofile->good())
+			{
+				std::ostreambuf_iterator<char> writer(ofile->rdbuf());
+				char* data = stream->client.data;
+				std::copy(data, data + stream->client.count_new, writer);
+			}
+			else
+			{
+				delete ofile;
+				ofile = NULL;
+				stream->user = NULL;
+				ELOG << _("PCAParser: output file is broken.");
+			}
 		}
-		else
+		if (stream->server.count_new > 0)
 		{
-			delim = "->";
-			hlf = &stream->server;
+			HttpReqInfo req = HttpReqInfo::fromRequest(stream->server.data,
+			                                           stream->server.count_new);
+			if (req.Method() != "")
+			{
+				if (ofile)
+				{
+					ofile->close();
+					delete ofile;
+					ofile = NULL;
+					stream->user = NULL;
+				}
+				if (req.Method() == "GET")
+				{
+					std::stringstream fdir;
+					fdir << parse_dir_ << "/";
+					fdir << std::setw(16) << std::setfill('0') << std::hex << req.UrlHash();
+					check_create_dir(fdir.str());
+					VLOG << _("PCAPareser: creating data file.")
+					     << _(" Filename: \"") << fdir.str() << "\"";
+					ofile = new std::ofstream(fdir.str().c_str(), std::ios::out | std::ios::binary);
+					if (ofile->good())
+					{
+						stream->user = ofile;
+					}
+					else
+					{
+						delete ofile;
+						ofile = NULL;
+						stream->user = NULL;
+						ELOG << _("PCAParser: error creating output file.")
+						     << _(" Filename: \"") << fdir.str() << "\""
+						     << _(" Error message: ") << strerror(errno);
+					}
+				}
+			}
 		}
-		VLOG << _("PCAParser: TCP DATA: ") << addr_info(stream->addr, delim)
-		     << _(" Dump: ") << byte2str(hlf->data, hlf->count);
 	}
 	else
 	{
-		ELOG << _("PCAParser: unknown NIDS state.")
-		     << _(" State: ") << stream->nids_state;
+		if (ofile)
+		{
+			delete ofile;
+			ofile = NULL;
+			stream->user = NULL;
+		}
 	}
 }
 
-PCAParser::PCAParser()
+std::string PCAParser::parse_dir_ = ".";
+
+void
+PCAParser::Parse(const std::string& input_file, const std::string& output_dir)
 {
-	Config::Ptr cfg = Config::GetInstance();
+	parse_dir_ = output_dir;
 	nids_params.n_tcp_streams = 4096;
-	nids_params.filename = const_cast<char*>(cfg->Filename().c_str());
+	nids_params.filename = const_cast<char*>(input_file.c_str());
+	nids_params.device = NULL;
 	nids_params.syslog = (void (*)())PCAParser::nidsLogger;
 	nids_params.syslog_level = 1;
 	nids_params.scan_num_hosts = 0;
@@ -146,8 +281,10 @@ PCAParser::PCAParser()
 	}
 	struct nids_chksum_ctl nocksum = {0, 0, NIDS_DONT_CHKSUM};
 	nids_register_chksum_ctl(&nocksum, 1);
-	nids_register_tcp((void *)PCAParser::tcpCallback);
+	nids_register_tcp((void *)tcpCallback);
 	nids_run();
+	nids_unregister_tcp((void *)tcpCallback);
+	nids_exit();
 }
 
 } // namespace

@@ -25,7 +25,7 @@ main(int argc, char* argv[])
 		return 0;
 
 	cfg->InitLogStream(Logger::ilog, 'I');
-	cfg->InitLogStream(Logger::ilog, 'E');
+	cfg->InitLogStream(Logger::elog, 'E');
 
 	bool forked = false;
 #ifndef WIN32
@@ -58,6 +58,8 @@ main(int argc, char* argv[])
 		Logger::verbose = true;
 	VLOG << cfg->GetOptions();
 
+	PCAParser::Ptr pcaparser = PCAParser::GetInstance();
+	pcaparser->Parse(cfg->Filename(), cfg->ParseDir());
 	SetNonBlock(0); // stdin
 	ProcessManager pm;
 	pm.Loop();
