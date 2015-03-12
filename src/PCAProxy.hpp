@@ -9,6 +9,9 @@
 #include <string>
 #include <set>
 #include <utils/NxSocket.h>
+#include <thread>
+#include <set>
+#include <mutex>
 
 namespace pcaproxy {
 
@@ -19,8 +22,12 @@ public:
 	static void Loop(PCAProxy* this_);
 	void Stop() { stop_ = true; }
 private:
-	static void onRequest(int sock, struct sockaddr_storage raddr);
+	static void onRequest(int sock);
+	static void responseLoop(PCAProxy* self);
+	static void sendHttpResp(int sock, int code, const std::string& msg);
 	static std::hash<std::string> hashFun_;
+	std::set<int>                 connected_;
+	std::mutex                    connected_mtx_;
 	bool stop_;
 };
 

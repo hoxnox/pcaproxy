@@ -12,6 +12,30 @@
 
 namespace pcaproxy {
 
+template <class OutputIterator>
+void split(const std::string& str, OutputIterator out,
+           const std::string& delimiter = " ", bool trimEmpty = false)
+{
+	ssize_t pos, lastPos = 0;
+	while(true)
+	{
+		pos = str.find_first_of(delimiter, lastPos);
+		if(pos == std::string::npos)
+		{
+			pos = str.length();
+			if(pos != lastPos || !trimEmpty)
+				*out++ = std::string(str.data()+lastPos, (ssize_t)pos-lastPos);
+			break;
+		}
+		else
+		{
+			if(pos != lastPos || !trimEmpty)
+				*out++ = std::string(str.data()+lastPos, (ssize_t)pos-lastPos);
+		}
+		lastPos = pos + 1;
+	}
+}
+
 static inline std::string&
 ltrim(std::string &s)
 {

@@ -51,48 +51,119 @@ PCAProxy::PCAProxy()
 {
 }
 
+void 
+PCAProxy::sendHttpResp(int sock, int code, const std::string& msg)
+{
+	std::stringstream ss;
+	ss << "HTTP1/1 " << code << " " << msg << "\r\n";
+	if (sock != INVALID_SOCKET)
+		send(sock, ss.str().c_str(), ss.str().length(), 0);
+}
+
 void
-PCAProxy::onRequest(int sock, struct sockaddr_storage addr)
+PCAProxy::onRequest(int sock)
 {
 	char buf[0x10000];
 	VLOG << "Request here!";
 	ssize_t rs = read(sock, buf, sizeof(buf));
-	if (rs == -1)
+	while(true)
 	{
-		ELOG << _("PCAProxy: error reading HTTP request.")
-		     << _(" Message: ") << strerror(errno);
-		return;
-	}
-	HttpReqInfo req(buf, rs);
-	if (req.Method() == "")
-	{
-		VLOG << _("PCAProxy: received strange request.")
-		     << _(" Dump: ") << byte2str(buf, rs);
-		return;
-	}
-	VLOG << _("PCAProxy: received HTTP request.")
-	     << _(" Method: ") << req.Method()
-	     << _(" UrlHash: ") << req.UrlHash()
-	     << _(" URL: ") << req.Url();
-	std::ifstream ifile(req.FName(), std::ios::in | std::ios::binary);
-	if (!ifile.good())
-	{
-		VLOG << _("PCAProxy: no file corresponds.")
-		     << _(" FileName: ") << req.FName()
-		     << _(" URL: ") << req.Url();
-		return;
-	}
-	std::istreambuf_iterator<char> reader;
-	std::vector<char> fbuf;
-	std::copy(reader, std::istreambuf_iterator<char>(), std::back_inserter(fbuf));
-	rs = send(sock, &fbuf[0], fbuf.size(), 0);
-	if (rs != fbuf.size())
-	{
-		ELOG << _("PCAProxy: error sending data.")
-		     << _(" Sent: ") << rs
-		     << _(" FileName: ") << req.FName()
-		     << _(" URL: ") << req.Url();
+		if (rs == -1)
+		{
+			ELOG << _("PCAProxy: error reading HTTP request.")
+			     << _(" Message: ") << strerror(errno);
+			sendHttpResp(sock, 500, "Error reading data");
 			return;
+		}
+		if (rs == 0)
+			return;
+		HttpReqInfo req(buf, rs);
+		if (req.Method() == "")
+		{
+			VLOG << _("PCAProxy: received strange request.")
+			     << _(" Dump: ") << byte2str(buf, rs);
+			sendHttpResp(sock, 400, "Bad request");
+			return;
+		}
+		VLOG << _("PCAProxy: received HTTP request.")
+		     << _(" Method: ") << req.Method()
+		     << _(" UrlHash: ") << req.UrlHash()
+		     << _(" URL: ") << req.Url();
+		std::ifstream ifile(req.FName(), std::ios::in | std::ios::binary);
+		if (!ifile.good())
+		{
+			VLOG << _("PCAProxy: no file corresponds.")
+			     << _(" FileName: ") << req.FName()
+			     << _(" URL: ") << req.Url();
+			sendHttpResp(sock, 404, "Not found");
+			return;
+		}
+		std::istreambuf_iterator<char> reader(ifile.rdbuf());
+		std::vector<char> fbuf;
+		std::copy(reader, std::istreambuf_iterator<char>(), std::back_inserter(fbuf));
+		rs = send(sock, &fbuf[0], fbuf.size(), 0);
+		if (rs != fbuf.size())
+		{
+			ELOG << _("PCAProxy: error sending data.")
+			     << _(" Sent: ") << rs
+			     << _(" Message: ") << strerror(errno)
+			     << _(" FileName: ") << req.FName()
+			     << _(" URL: ") << req.Url();
+				return;
+		}
+	}
+}
+
+void
+PCAProxy::responseLoop(PCAProxy* this_)
+{
+	Config::Ptr cfg = Config::GetInstance();
+	while(!this_->stop_)
+	{
+		struct timeval tv = cfg->Tick();
+		fd_set rdfs, exfs;
+		int max = 0;
+		FD_ZERO(&rdfs);
+		{
+			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
+			for (auto i = this_->connected_.begin(); i != this_->connected_.end(); ++i)
+			{
+				FD_SET(*i, &rdfs);
+				FD_SET(*i, &exfs);
+			}
+			if (!this_->connected_.empty())
+				max = *this_->connected_.rbegin() + 1;
+		}
+		int rs = select(max, &rdfs, NULL, &exfs, &tv);
+		if (rs == -1)
+		{
+			ELOG << _("PCAProxy: error calling select in reponseLoop.")
+			     << _(" Message: ") << strerror(errno);
+			this_->Stop();
+			break;
+		}
+		if (rs == 0)
+		{
+			// VLOG << _("PCAProxy: Heartbeat");
+			continue;
+		}
+		{
+			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
+			for(auto i = this_->connected_.begin(); i != this_->connected_.end(); ++i)
+			{
+				if (FD_ISSET(*i, &exfs))
+				{
+					VLOG << _("PCAParser: closing connection ") << *i;
+					shutdown(*i, SHUT_RDWR);
+					close(*i);
+					this_->connected_.erase(i);
+				}
+				if (FD_ISSET(*i, &rdfs))
+				{
+					onRequest(*i);
+				}
+			}
+		}
 	}
 }
 
@@ -104,9 +175,8 @@ PCAProxy::Loop(PCAProxy* this_)
 		ELOG << _("Attempt to Loop() already running PCAProxy instance.");
 		return;
 	}
-	Config::Ptr cfg = Config::GetInstance();
-	struct timeval tv = cfg->Tick();
 	this_->stop_ = false;
+	Config::Ptr cfg = Config::GetInstance();
 	SOCKET sock = init_sock(Config::Str2Inaddr(cfg->BindAddr()));
 	if (!IS_VALID_SOCK(sock))
 		return;
@@ -116,18 +186,19 @@ PCAProxy::Loop(PCAProxy* this_)
 		     << _(" Message: ") << GET_LAST_SOCK_ERROR();
 		return;
 	}
+	std::thread response_thread(responseLoop, this_);
 	while (!this_->stop_)
 	{
 		fd_set rdfs;
 		FD_ZERO(&rdfs);
 		FD_SET(sock, &rdfs);
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
+		struct timeval tv = cfg->Tick();
 		int rs = select(sock+1, &rdfs, NULL, NULL, &tv);
 		if (rs == -1)
 		{
 			ELOG << _("PCAProxy: error calling select.")
 			     << _(" Message: ") << strerror(errno);
+			this_->Stop();
 			break;
 		}
 		if (rs == 0)
@@ -146,11 +217,11 @@ PCAProxy::Loop(PCAProxy* this_)
 		}
 		else
 		{
-			onRequest(nsock, raddr);
-			shutdown(nsock, SHUT_RDWR);
-			close(nsock);
+			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
+			this_->connected_.insert(nsock);
 		}
 	}
+	response_thread.join();
 }
 
 } // namespace

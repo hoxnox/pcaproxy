@@ -14,12 +14,12 @@ namespace pcaproxy {
 
 std::hash<std::string> HttpReqInfo::hashFn;
 
-HttpReqInfo::HttpReqInfo(const char* data, size_t dataln)
-	: url_hash_(0)
+void
+HttpReqInfo::parseReqStr(const std::string& line)
 {
 	ssize_t i = 0;
-	for (; std::isalpha(data[i]) && i < 7 && i < dataln; ++i)
-		method_ += data[i];
+	for (; std::isalpha(line[i]) && i < 7 && i < line.length(); ++i)
+		method_ += line[i];
 	if (method_ != "OPTIONS"
 	 && method_ != "GET"
 	 && method_ != "HEAD"
@@ -32,37 +32,84 @@ HttpReqInfo::HttpReqInfo(const char* data, size_t dataln)
 		method_ = "";
 		return;
 	}
-
+	
 	ssize_t left = i;
-	while (data[i] != '\n' && data[i-1] != '\r' && i < dataln)
-		++i;
-	const std::string http_1 = " HTTP/1.1\r\n";
-	if (i - left < http_1.length())
+	ssize_t right = line.find(" HTTP/1.1");
+	if (right == std::string::npos || right <= left)
 	{
 		method_ = "";
 		return;
 	}
-	ssize_t right = i - http_1.length();
-	if (std::string(data + right + 1, data + i + 1) != http_1)
-	{
-		method_ = "";
-		return;
-	}
-
-	url_.assign(data + left, data + right);
+	
+	url_ = line.substr(left, right - left);
 	trim(url_);
-	url_hash_ = hashFn(url_);
+	update();
+	VLOG << _("HttpReqInfo: fetched request.")
+	     << _(" Method: \"") << method_ << "\""
+	     << _(" URL: \"") << url_ << "\""
+	     << _(" URL hash: ") << url_hash_;
+}
+
+void
+HttpReqInfo::update()
+{
+	size_t url_hash = hashFn(url_);
 	Config::Ptr cfg = Config::GetInstance();
 	std::stringstream ss;
-	ss << cfg->ParseDir() << "/";
-	ss << std::setw(16) << std::setfill('0') << std::hex << url_hash_;
-	fname_ = ss.str();
-	/*
-	VLOG << _("HttpReqInfo: fetched request.")
-	     << _(" Method: ") << req.method_
-	     << _(" URL: ") << url
-	     << _(" URL hash: ") << req.url_hash_;
-	*/
+	ss << std::setw(16) << std::setfill('0') << std::hex << url_hash;
+	url_hash_ = ss.str();
+	fname_ = cfg->ParseDir() + "/" + url_hash_;
+}
+
+void
+HttpReqInfo::parseHdrStr(const std::string& line)
+{
+	std::smatch sm;
+	if (regex_match(line, sm, rgx_host))
+	{
+		url_ = "http://" + sm[1].str() + url_;
+		VLOG << _("HttpReqInfo: host found, URL updated.")
+		     << _(" Host: \"") << sm[1].str() << "\""
+		     << _(" URL: \"") << url_ << "\"";
+		update();
+	}
+}
+
+HttpReqInfo::HttpReqInfo(const char* data, size_t dataln)
+	: rgx_host("^host:\\s*(.*)", std::regex::icase)
+{
+	for(ssize_t pos = 3; pos < dataln; ++pos)
+	{
+		if (data[pos - 3] == '\r' && data[pos - 2] == '\n'
+		 && data[pos - 1] == '\r' && data[pos]     == '\n')
+		{
+			dataln = pos - 3;
+			break;
+		}
+	}
+	std::vector<std::string> lines;
+	split(std::string(data, data + dataln), std::back_inserter(lines), "\r\n");
+	if (lines.empty())
+		return;
+	parseReqStr(lines[0]);
+	if (method_ == "")
+		return;
+	if (url_.substr(0, 7) != "http://")
+	{
+		bool prev_empty = false;
+		for(size_t i = 1; i < lines.size(); ++i)
+		{
+			if (lines[i].empty())
+			{
+				if (prev_empty)
+					break;
+				prev_empty = true;
+				continue;
+			}
+			prev_empty = false;
+			parseHdrStr(lines[i]);
+		}
+	}
 }
 
 } // namespace

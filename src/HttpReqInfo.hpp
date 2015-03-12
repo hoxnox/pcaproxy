@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <string>
+#include <regex>
 
 namespace pcaproxy {
 
@@ -15,11 +16,15 @@ public:
 	HttpReqInfo(const char* data, size_t dataln);
 	std::string Method() const { return method_; };
 	std::string Url() const { return url_; }
-	size_t      UrlHash() const { return url_hash_; };
+	std::string UrlHash() const { return url_hash_; };
 	std::string FName() const { return fname_; }
 private:
+	void parseReqStr(const std::string& line);
+	void parseHdrStr(const std::string& line);
+	void update();
 	std::string method_;
-	size_t      url_hash_;
+	std::regex  rgx_host;
+	std::string url_hash_;
 	std::string url_;
 	std::string fname_;
 	static std::hash<std::string> hashFn;
