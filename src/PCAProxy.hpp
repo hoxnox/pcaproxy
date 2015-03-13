@@ -7,11 +7,9 @@
 #include <memory>
 #include <functional>
 #include <string>
-#include <set>
 #include <utils/NxSocket.h>
-#include <thread>
-#include <set>
-#include <mutex>
+#include <event.h>
+#include <evhttp.h>
 
 namespace pcaproxy {
 
@@ -22,13 +20,13 @@ public:
 	static void Loop(PCAProxy* this_);
 	void Stop() { stop_ = true; }
 private:
-	static void onRequest(int sock);
-	static void responseLoop(PCAProxy* self);
-	static void sendHttpResp(int sock, int code, const std::string& msg);
-	static std::hash<std::string> hashFun_;
-	std::set<int>                 connected_;
-	std::mutex                    connected_mtx_;
-	bool stop_;
+	static void onRequest(struct evhttp_request * req, void * arg);
+	static void heartbeat(int, short int, void* this_);
+	bool                                              stop_;
+	std::unique_ptr<event_base, void(&)(event_base*)> evbase_;
+	std::unique_ptr<event, void(&)(event*)>           evtimeout_;
+	std::unique_ptr<evhttp, void(&)(evhttp*)>         evhttp_;
+	std::unique_ptr<evbuffer, void(&)(evbuffer*)>     evbuf_;
 };
 
 } // namespace

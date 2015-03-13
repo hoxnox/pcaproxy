@@ -12,6 +12,7 @@ option(WITH_DOCS            "Generate docs" OFF)
 
 # Don't download and build lib - find system's one if ON
 option(WITH_SYSTEM_LIBPCAP  "Use system's libpcap" OFF)
+option(WITH_SYSTEM_LIBEVENT "Use system's libevent" OFF)
 option(WITH_SYSTEM_LIBNIDS  "Use system's libnids" OFF)
 
 ########################################################################
@@ -79,6 +80,26 @@ else()
 endif()
 include_directories(${NIDS_INCLUDE_DIR})
 list(APPEND LIBRARIES ${NIDS_LIBRARIES} ${Pcap_LIBRARIES})
+
+########################################################################
+# libevent
+
+if(NOT WITH_SYSTEM_LIBEVENT)
+	include(ExternalProject)
+	ExternalProject_Add(libevent
+		URL "https://github.com/libevent/libevent/archive/release-2.0.22-stable.tar.gz"
+		URL_MD5 "8913ef56ec329f2c046007bd634c7201"
+		PATCH_COMMAND <SOURCE_DIR>/autogen.sh
+		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --enable-static --disable-shared
+		INSTALL_DIR "${DEPS_ROOT}"
+	)
+	set(Event_INCLUDE_DIR ${DEPS_ROOT}/include)
+	set(Event_LIBRARIES ${DEPS_ROOT}/lib/libevent.a)
+else()
+	find_package(Event REQUIRED)
+endif()
+include_directories(${Event_INCLUDE_DIR})
+list(APPEND LIBRARIES ${Event_LIBRARIES})
 
 ########################################################################
 # NxSocket

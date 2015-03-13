@@ -46,125 +46,111 @@ inline int init_sock(const struct sockaddr_storage& addr)
 	return sock;
 }
 
+void PCAProxy::heartbeat(int, short int, void *self)
+{
+	//VLOG << "Heartbeat";
+	if (!self)
+		return;
+	PCAProxy* this_ = reinterpret_cast<PCAProxy*>(self);
+	if (this_->stop_)
+	{
+		event_base_loopbreak(this_->evbase_.get());
+		return;
+	}
+	Config::Ptr cfg = Config::GetInstance();
+	struct timeval tv = cfg->Tick();
+	event_add(this_->evtimeout_.get(), &tv);
+	return;
+}
+
 PCAProxy::PCAProxy()
 	: stop_(true)
+	, evbase_(event_base_new(), event_base_free)
+	, evtimeout_(event_new(evbase_.get(), 0, EV_TIMEOUT, heartbeat, this), event_free)
+	, evhttp_(NULL, evhttp_free)
+	, evbuf_(evbuffer_new(), evbuffer_free)
 {
-}
-
-void 
-PCAProxy::sendHttpResp(int sock, int code, const std::string& msg)
-{
-	std::stringstream ss;
-	ss << "HTTP1/1 " << code << " " << msg << "\r\n";
-	if (sock != INVALID_SOCKET)
-		send(sock, ss.str().c_str(), ss.str().length(), 0);
 }
 
 void
-PCAProxy::onRequest(int sock)
+PCAProxy::onRequest(struct evhttp_request * evreq, void * arg)
 {
-	char buf[0x10000];
-	VLOG << "Request here!";
-	ssize_t rs = read(sock, buf, sizeof(buf));
-	while(true)
+	if(!arg)
 	{
-		if (rs == -1)
-		{
-			ELOG << _("PCAProxy: error reading HTTP request.")
-			     << _(" Message: ") << strerror(errno);
-			sendHttpResp(sock, 500, "Error reading data");
-			return;
-		}
-		if (rs == 0)
-			return;
-		HttpReqInfo req(buf, rs);
-		if (req.Method() == "")
-		{
-			VLOG << _("PCAProxy: received strange request.")
-			     << _(" Dump: ") << byte2str(buf, rs);
-			sendHttpResp(sock, 400, "Bad request");
-			return;
-		}
-		VLOG << _("PCAProxy: received HTTP request.")
-		     << _(" Method: ") << req.Method()
-		     << _(" UrlHash: ") << req.UrlHash()
+		ELOG << _("onRequest bad arg value");
+		return;
+	}
+	if(!evreq)
+		return;
+	PCAProxy *this_ = reinterpret_cast<PCAProxy*>(arg);
+	if (evreq->type != EVHTTP_REQ_GET)
+	{
+		evhttp_send_error(evreq, HTTP_BADREQUEST, "Can't handle the query.");
+		return;
+	}
+	HttpReqInfo req(std::string(evreq->uri));
+	VLOG << _("PCAProxy: received HTTP request.")
+	     << _(" Method: ") << req.Method()
+	     << _(" UrlHash: ") << req.UrlHash()
+	     << _(" URL: ") << req.Url();
+	std::ifstream ifile(req.FName(), std::ios::in | std::ios::binary);
+	if (!ifile.good())
+	{
+		VLOG << _("PCAProxy: no file corresponds.")
+		     << _(" FileName: ") << req.FName()
 		     << _(" URL: ") << req.Url();
-		std::ifstream ifile(req.FName(), std::ios::in | std::ios::binary);
-		if (!ifile.good())
+		evhttp_send_error(evreq, HTTP_NOTFOUND, "No such data in the pcap file.");
+		return;
+	}
+	std::vector<char> header_raw;
+	std::istreambuf_iterator<char> reader(ifile.rdbuf());
+	for (;reader != std::istreambuf_iterator<char>(); ++reader)
+	{
+		header_raw.push_back(*reader);
+		if (std::string(header_raw.rbegin(), header_raw.rbegin() + 4) == "\n\r\n\r")
+			break;
+	}
+	std::streampos curpos = ifile.tellg();
+	ifile.seekg(0, std::ios_base::end);
+	std::streampos endpos = ifile.tellg();
+	ifile.seekg(curpos);
+	ssize_t body_size_n = endpos - curpos;
+	std::stringstream ss;
+	ss << body_size_n;
+	std::string body_size = ss.str();
+
+	std::vector<std::string> hlines;
+	split(std::string(header_raw.begin(), header_raw.end()),
+	      std::back_inserter(hlines), "\r\n", true);
+
+	for (auto i = hlines.begin() + 1; i != hlines.end(); ++i)
+	{
+		ssize_t colon_pos = i->find_first_of(':');
+		if (colon_pos == std::string::npos)
 		{
-			VLOG << _("PCAProxy: no file corresponds.")
-			     << _(" FileName: ") << req.FName()
-			     << _(" URL: ") << req.Url();
-			sendHttpResp(sock, 404, "Not found");
+			ELOG << _("PCAProxy: wrong file structure."
+			          " Can't find colon in the header line.")
+			     << _(" Filename: ") << req.FName()
+			     << _(" Line: ") << *i;
+			evhttp_send_error(evreq, 500, "Datafile has wrong structure.");
 			return;
 		}
-		std::istreambuf_iterator<char> reader(ifile.rdbuf());
-		std::vector<char> fbuf;
-		std::copy(reader, std::istreambuf_iterator<char>(), std::back_inserter(fbuf));
-		rs = send(sock, &fbuf[0], fbuf.size(), 0);
-		if (rs != fbuf.size())
-		{
-			ELOG << _("PCAProxy: error sending data.")
-			     << _(" Sent: ") << rs
-			     << _(" Message: ") << strerror(errno)
-			     << _(" FileName: ") << req.FName()
-			     << _(" URL: ") << req.Url();
-				return;
-		}
+		std::string key = i->substr(0, colon_pos);
+		std::string val = i->substr(colon_pos + 1, i->length() - colon_pos -1);
+		if (tolower(key) == "content-length")
+			evhttp_add_header(evreq->output_headers, key.c_str(), body_size.c_str());
+		else if (tolower(key) == "connection")
+			;
+		else
+			evhttp_add_header(evreq->output_headers, key.c_str(), val.c_str());
+		VLOG << _("PCAProxy: header line: ") << key << ": " << val;
 	}
-}
 
-void
-PCAProxy::responseLoop(PCAProxy* this_)
-{
-	Config::Ptr cfg = Config::GetInstance();
-	while(!this_->stop_)
-	{
-		struct timeval tv = cfg->Tick();
-		fd_set rdfs, exfs;
-		int max = 0;
-		FD_ZERO(&rdfs);
-		{
-			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
-			for (auto i = this_->connected_.begin(); i != this_->connected_.end(); ++i)
-			{
-				FD_SET(*i, &rdfs);
-				FD_SET(*i, &exfs);
-			}
-			if (!this_->connected_.empty())
-				max = *this_->connected_.rbegin() + 1;
-		}
-		int rs = select(max, &rdfs, NULL, &exfs, &tv);
-		if (rs == -1)
-		{
-			ELOG << _("PCAProxy: error calling select in reponseLoop.")
-			     << _(" Message: ") << strerror(errno);
-			this_->Stop();
-			break;
-		}
-		if (rs == 0)
-		{
-			// VLOG << _("PCAProxy: Heartbeat");
-			continue;
-		}
-		{
-			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
-			for(auto i = this_->connected_.begin(); i != this_->connected_.end(); ++i)
-			{
-				if (FD_ISSET(*i, &exfs))
-				{
-					VLOG << _("PCAParser: closing connection ") << *i;
-					shutdown(*i, SHUT_RDWR);
-					close(*i);
-					this_->connected_.erase(i);
-				}
-				if (FD_ISSET(*i, &rdfs))
-				{
-					onRequest(*i);
-				}
-			}
-		}
-	}
+	std::vector<char> fbuf;
+	std::copy(reader, std::istreambuf_iterator<char>(), std::back_inserter(fbuf));
+	evbuffer_add(this_->evbuf_.get(), &fbuf[0], fbuf.size());
+	evhttp_send_reply(evreq, HTTP_OK, "", this_->evbuf_.get());
+	return;
 }
 
 void
@@ -177,6 +163,7 @@ PCAProxy::Loop(PCAProxy* this_)
 	}
 	this_->stop_ = false;
 	Config::Ptr cfg = Config::GetInstance();
+	struct timeval tv = cfg->Tick();
 	SOCKET sock = init_sock(Config::Str2Inaddr(cfg->BindAddr()));
 	if (!IS_VALID_SOCK(sock))
 		return;
@@ -186,42 +173,16 @@ PCAProxy::Loop(PCAProxy* this_)
 		     << _(" Message: ") << GET_LAST_SOCK_ERROR();
 		return;
 	}
-	std::thread response_thread(responseLoop, this_);
-	while (!this_->stop_)
-	{
-		fd_set rdfs;
-		FD_ZERO(&rdfs);
-		FD_SET(sock, &rdfs);
-		struct timeval tv = cfg->Tick();
-		int rs = select(sock+1, &rdfs, NULL, NULL, &tv);
-		if (rs == -1)
-		{
-			ELOG << _("PCAProxy: error calling select.")
-			     << _(" Message: ") << strerror(errno);
-			this_->Stop();
-			break;
-		}
-		if (rs == 0)
-		{
-			// VLOG << _("PCAProxy: Heartbeat");
-			continue;
-		}
-		struct sockaddr_storage raddr;
-		memset(&raddr, 0, sizeof(raddr));
-		socklen_t raddrlen = sizeof(raddr);
-		int nsock = accept(sock, (struct sockaddr*)&raddr, &raddrlen);
-		if (nsock == -1)
-		{
-			ELOG << _("PCAProxy: error calling accept.")
-			     << _(" Message: ") << strerror(errno);
-		}
-		else
-		{
-			std::lock_guard<std::mutex> lock(this_->connected_mtx_);
-			this_->connected_.insert(nsock);
-		}
+	this_->evhttp_.reset(evhttp_new(this_->evbase_.get()));
+	if (evhttp_accept_socket(this_->evhttp_.get(), sock) == -1) {
+		ILOG << "Error evhttp_accept_socket(): "
+		     << strerror(errno) << std::endl;
+		return;
 	}
-	response_thread.join();
+	evhttp_set_gencb(this_->evhttp_.get(), PCAProxy::onRequest, this_);
+	event_add(this_->evtimeout_.get(), &tv);
+	event_base_dispatch(this_->evbase_.get());
+	return;
 }
 
 } // namespace

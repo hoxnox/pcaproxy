@@ -14,6 +14,13 @@ namespace pcaproxy {
 
 std::hash<std::string> HttpReqInfo::hashFn;
 
+HttpReqInfo::HttpReqInfo(const std::string& url)
+	: method_("GET")
+	, url_(url)
+{
+	update();
+}
+
 void
 HttpReqInfo::parseReqStr(const std::string& line)
 {
@@ -42,7 +49,7 @@ HttpReqInfo::parseReqStr(const std::string& line)
 	}
 	
 	url_ = line.substr(left, right - left);
-	trim(url_);
+	url_ = trim(url_);
 	update();
 	VLOG << _("HttpReqInfo: fetched request.")
 	     << _(" Method: \"") << method_ << "\""

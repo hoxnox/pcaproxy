@@ -9,8 +9,14 @@
 #include <string>
 #include <cstring>
 #include <algorithm>
+#include <locale>
 
 namespace pcaproxy {
+
+inline size_t
+file_size()
+{
+}
 
 template <class OutputIterator>
 void split(const std::string& str, OutputIterator out,
@@ -36,22 +42,29 @@ void split(const std::string& str, OutputIterator out,
 	}
 }
 
-static inline std::string&
-ltrim(std::string &s)
+static inline std::string
+tolower(std::string s)
+{
+	std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+	return s;
+}
+
+static inline std::string
+ltrim(std::string s)
 {
 	s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
 	return s;
 }
 
-static inline std::string&
-rtrim(std::string &s)
+static inline std::string
+rtrim(std::string s)
 {
 	s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
 	return s;
 }
 
-static inline std::string&
-trim(std::string &s)
+static inline std::string
+trim(std::string s)
 {
 	return ltrim(rtrim(s));
 }
