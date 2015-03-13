@@ -10,17 +10,27 @@
 #include <cstring>
 #include <algorithm>
 #include <locale>
+#include <regex>
+#include <fstream>
+#include <dirent.h>
 
 namespace pcaproxy {
 
-inline size_t
-file_size()
+template<class OutputIterator> bool
+read_file(std::string fname, OutputIterator out)
 {
+	std::ifstream ifile(fname.c_str(), std::ios::binary | std::ios::in);
+	if (!ifile.good())
+		return false;
+	std::istreambuf_iterator<char> reader(ifile.rdbuf());
+	while (reader != std::istreambuf_iterator<char>())
+		*out++ = *reader++;
+	return true;
 }
 
-template <class OutputIterator>
-void split(const std::string& str, OutputIterator out,
-           const std::string& delimiter = " ", bool trimEmpty = false)
+template <class OutputIterator> void
+split(const std::string& str, OutputIterator out,
+      const std::string& delimiter = " ", bool trimEmpty = false)
 {
 	ssize_t pos, lastPos = 0;
 	while(true)
@@ -67,6 +77,24 @@ static inline std::string
 trim(std::string s)
 {
 	return ltrim(rtrim(s));
+}
+
+template<class OutputIterator> bool
+wheel_dir(std::string dirname, OutputIterator out, std::regex filter = std::regex())
+{
+	std::vector<std::string> rsp_fnames;
+	DIR *dir = opendir(dirname.c_str());
+	if (dir == NULL)
+		return false;
+	struct dirent *ent;
+	for (dirent *ent = readdir(dir); ent != NULL; ent = readdir(dir))
+	{
+		std::string fname(dirname + "/" + ent->d_name);
+		if (regex_match(fname, filter))
+			*out++ = fname;
+	}
+	closedir(dir);
+	return true;
 }
 
 /**@brief Create directories (recursive)
