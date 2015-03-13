@@ -14,6 +14,7 @@ class HttpReqInfo
 {
 public:
 	HttpReqInfo(const char* data, size_t dataln);
+	HttpReqInfo(const std::string& url);
 	std::string Method() const { return method_; };
 	std::string Url() const { return url_; }
 	std::string UrlHash() const { return url_hash_; };
