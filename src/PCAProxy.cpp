@@ -110,6 +110,7 @@ PCAProxy::onRequest(struct evhttp_request * evreq, void * arg)
 		if (std::string(header_raw.rbegin(), header_raw.rbegin() + 4) == "\n\r\n\r")
 			break;
 	}
+	++reader;
 	std::streampos curpos = ifile.tellg();
 	ifile.seekg(0, std::ios_base::end);
 	std::streampos endpos = ifile.tellg();
@@ -137,13 +138,9 @@ PCAProxy::onRequest(struct evhttp_request * evreq, void * arg)
 		}
 		std::string key = i->substr(0, colon_pos);
 		std::string val = i->substr(colon_pos + 1, i->length() - colon_pos -1);
-		if (tolower(key) == "content-length")
-			evhttp_add_header(evreq->output_headers, key.c_str(), body_size.c_str());
-		else if (tolower(key) == "connection")
-			;
-		else
+		if (tolower(key) != "connection")
 			evhttp_add_header(evreq->output_headers, key.c_str(), val.c_str());
-		VLOG << _("PCAProxy: header line: ") << key << ": " << val;
+		//VLOG << _("PCAProxy: header line: ") << key << ": " << val;
 	}
 
 	std::vector<char> fbuf;

@@ -65,7 +65,7 @@ HttpReqInfo::update()
 	std::stringstream ss;
 	ss << std::setw(16) << std::setfill('0') << std::hex << url_hash;
 	url_hash_ = ss.str();
-	fname_ = cfg->ParseDir() + "/" + url_hash_;
+	fname_ = cfg->ParseDir() + "/" + url_hash_ + ".dat";
 }
 
 void
@@ -75,10 +75,11 @@ HttpReqInfo::parseHdrStr(const std::string& line)
 	if (regex_match(line, sm, rgx_host))
 	{
 		url_ = "http://" + sm[1].str() + url_;
+		update();
 		VLOG << _("HttpReqInfo: host found, URL updated.")
 		     << _(" Host: \"") << sm[1].str() << "\""
-		     << _(" URL: \"") << url_ << "\"";
-		update();
+		     << _(" URL: \"") << url_ << "\""
+		     << _(" UrlHash: ") << url_hash_;
 	}
 }
 
