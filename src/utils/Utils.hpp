@@ -30,7 +30,7 @@ read_file(std::string fname, OutputIterator out)
 
 template <class OutputIterator> void
 split(const std::string& str, OutputIterator out,
-      const std::string& delimiter = " ", bool trimEmpty = false)
+      const std::string delimiter = " ", bool trimEmpty = false)
 {
 	ssize_t pos, lastPos = 0;
 	while(true)

@@ -10,12 +10,6 @@
 
 namespace pcaproxy {
 
-struct HttpResponse
-{
-	std::string url_hash;
-	std::vector<char> data;
-};
-
 class HttpReqInfo
 {
 public:

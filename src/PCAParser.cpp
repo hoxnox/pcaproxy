@@ -32,8 +32,10 @@ PCAParser::Ptr PCAParser::instance_(NULL);
 void
 PCAParser::nidsLogger(int type, int err, struct ip *iph, void *data)
 {
+	/*
 	if (type == 2 && err == 8) // WTF?!
 		return;
+		*/
 	ILOG << "NIDS error: "
 	     << _(" Message type: ") << type
 	     << _(" Error code: ") << err;
@@ -50,9 +52,14 @@ addr_info(const struct tuple4& addr, std::string delim = "vs")
 }
 
 template <class InputIterator> inline void
-append_to_file(const std::string& fname, InputIterator begin, InputIterator end)
+write_to_file(const std::string& fname, InputIterator begin, InputIterator end, bool append = true)
 {
-	std::ofstream ofile(fname.c_str(), std::ios::binary | std::ios::app);
+	std::ios::openmode mode = std::ios::binary;
+	if (append)
+		mode |= std::ios::app;
+	else
+		mode |= std::ios::out;
+	std::ofstream ofile(fname.c_str(), mode);
 	if (ofile.good())
 	{
 		std::ostreambuf_iterator<char> writer(ofile.rdbuf());
@@ -63,6 +70,7 @@ append_to_file(const std::string& fname, InputIterator begin, InputIterator end)
 		ELOG << _("PCAParser: cannot open file for append.")
 		     << _(" Filename: \"") << fname << "\"";
 	}
+	ofile.close();
 }
 
 void
@@ -101,17 +109,20 @@ PCAParser::tcpCallback(struct tcp_stream *stream, void** params)
 		{
 			if (stream->client.count_new > 0)
 			{
-				append_to_file(fprefix + ".rsp", stream->client.data,
+				write_to_file(fprefix + ".rsp", stream->client.data,
 					stream->client.data + stream->client.count_new);
 			}
 			if (stream->server.count_new > 0)
 			{
-				append_to_file(fprefix + ".req", stream->server.data,
+				write_to_file(fprefix + ".req", stream->server.data,
 					stream->server.data + stream->server.count_new);
 			}
 		}
 	}
-	else
+	else if (stream->nids_state == NIDS_CLOSE
+	      || stream->nids_state == NIDS_RESET
+	      || stream->nids_state == NIDS_TIMED_OUT
+	      || stream->nids_state == NIDS_EXITING)
 	{
 		if (stream->user)
 		{
@@ -127,39 +138,60 @@ void
 PCAParser::splitHttpRequests(const std::vector<char>& data,
                              std::vector<HttpReqInfo>& result)
 {
-	std::string str_req(data.begin(), data.end());
-	std::vector<std::string> requests;
-	split(str_req, std::back_inserter(requests), "\r\n\r\n", true);
-	for (auto req = requests.begin(); req != requests.end(); ++req)
+	const char* end  = &data[data.size()];
+	if (data.size() == 0)
+		return;
+	const char* left = &data[0];
+	std::string delim = "\r\n\r\nGET";
+	const char* right = std::search(left + 1, end, delim.begin(), delim.end() - 1);
+	while (end - right > 7)
 	{
-		HttpReqInfo ireq(*req);
+		HttpReqInfo ireq(left, right - left);
 		result.push_back(ireq);
+		left = right + 4;
+		right = std::search(left, end, delim.begin(), delim.end());
 	}
+	HttpReqInfo ireq(left, end - left);
+	result.push_back(ireq);
 }
 
 void
 PCAParser::splitHttpResponses(const std::vector<char>& data,
-                              std::vector<HttpResponse>& result)
+                              std::vector<std::vector<char> >& result)
 {
+	if (data.size() == 0)
+		return;
+	const char* left = &data[0];
+	const char* end  = &data[data.size() - 1] + 1;
+	const std::string http_ok = "HTTP/1.1 200 OK\r\n";
+	const char* right = std::search(left + 1, end, http_ok.begin(), http_ok.end() - 1);
+	while (end - right > 17)
+	{
+		std::vector<char> resp(left, right);
+		result.push_back(resp);
+		left = right;
+		right = std::search(left + 1, end, http_ok.begin(), http_ok.end() - 1);
+	}
+	std::vector<char> resp(left, end);
+	result.push_back(resp);
 }
 
 bool
-PCAParser::saveToFiles(const std::vector<HttpResponse>& responses,
+PCAParser::saveToFiles(const std::vector<std::vector<char> >& responses,
                        const std::vector<HttpReqInfo>& requests)
 {
 	Config::Ptr cfg = Config::GetInstance();
 	if (responses.size() != requests.size())
 	{
-		VLOG << _("PCAParser: requests count didn't match responses count"
-		          " in the same TCP stream.");
-		return false;
+		ELOG << _("PCAParser: requests count didn't match responses count"
+		          " in the same TCP stream. Trying first-to-first strategy.")
+		     << _(" Responses: ") << responses.size()
+		     << _(" Requests: ") << requests.size();
 	}
-	for (size_t i = 0; i < requests.size(); ++i)
-	{
-		std::string fname = cfg->ParseDir() + "/" + requests[i].UrlHash() + ".dat";
-		append_to_file(fname.c_str(), responses[i].data.begin(),
-		                              responses[i].data.end());
-	}
+	size_t min_size = std::min(requests.size(), responses.size());
+	for (size_t i = 0; i < min_size; ++i)
+		write_to_file(requests[i].FName(), responses[i].begin(), responses[i].end(), false);
+	return true;
 }
 
 void
@@ -180,6 +212,8 @@ PCAParser::splitHttp()
 			     << _(" Filename: \"") << *i << "\"";
 			continue;
 		}
+		if (data_rsp.empty())
+			continue;
 		std::string req_fname(i->substr(0, i->length() - 4) + ".req");
 		if (!read_file(req_fname, std::back_inserter(data_req)))
 		{
@@ -187,9 +221,11 @@ PCAParser::splitHttp()
 			     << _(" Filename: \"") << req_fname << "\"";
 			continue;
 		}
+		if (data_req.empty())
+			continue;
 		std::vector<HttpReqInfo> requests;
 		splitHttpRequests(data_req, requests);
-		std::vector<HttpResponse> responses;
+		std::vector<std::vector<char> > responses;
 		splitHttpResponses(data_rsp, responses);
 		if (!saveToFiles(responses, requests))
 		{

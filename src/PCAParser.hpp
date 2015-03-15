@@ -34,8 +34,8 @@ private:
 	static void splitHttpRequests(const std::vector<char>& data,
 	                              std::vector<HttpReqInfo>& result);
 	static void splitHttpResponses(const std::vector<char>& data,
-	                               std::vector<HttpResponse>& result);
-	static bool saveToFiles(const std::vector<HttpResponse>& responses,
+	                               std::vector<std::vector<char> >& result);
+	static bool saveToFiles(const std::vector<std::vector<char> >& responses,
 	                        const std::vector<HttpReqInfo>& requests);
 	static std::string                                 parse_dir_;
 	static std::shared_ptr<PCAParser>                  instance_;
