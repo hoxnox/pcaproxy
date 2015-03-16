@@ -1,0 +1,51 @@
+# Find libnids
+# Merder Kim <hoxnox@gmail.com>
+# 
+# input:
+#  NIDS_ROOT
+#  NIDS_USE_STATIC_LIBS
+#
+# output:
+#  NIDS_FOUND
+#  NIDS_INCLUDE_DIR
+#  NIDS_LIBRARIES
+#
+
+if(NIDS_INCLUDE_DIR AND NIDS_LIBRARIES)
+    set(NIDS_FIND_QUITELY TRUE) # cached
+endif(NIDS_INCLUDE_DIR AND NIDS_LIBRARIES)
+
+if(NOT DEFINED NIDS_ROOT)
+    set(NIDS_ROOT /usr /usr/local $ENV{NIDS_ROOT})
+endif(NOT DEFINED NIDS_ROOT)
+
+find_path(NIDS_INCLUDE_DIR nids/nids.h
+    PATHS ${NIDS_ROOT}
+    PATH_SUFFIXES nids nids/include include nids/json
+)
+
+if( NIDS_USE_STATIC_LIBS )
+	set( _NIDS_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+	if(WIN32)
+		set(CMAKE_FIND_LIBRARY_SUFFIXES .lib .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+	else()
+		set(CMAKE_FIND_LIBRARY_SUFFIXES .a )
+	endif()
+endif()
+
+find_library(NIDS_LIBRARIES
+    NAMES nids
+    PATHS ${NIDS_ROOT}
+    PATH_SUFFIXES lib
+)
+mark_as_advanced(NIDS_INCLUDE_DIR NIDS_LIBRARIES)
+
+# Restore the original find library ordering
+if( NIDS_USE_STATIC_LIBS )
+	set(CMAKE_FIND_LIBRARY_SUFFIXES ${_NIDS_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
+endif()
+
+include("${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake")
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(NIDS DEFAULT_MSG NIDS_INCLUDE_DIR NIDS_LIBRARIES)
+
+

@@ -22,14 +22,10 @@ main(int argc, char* argv[])
 
 	int rs = cfg->ParseArgs(argc, argv);
 	if(rs != 0)
-	{
-		if(rs < 0)
-			ELOG << _("Error parsing arguments.");
 		return 0;
-	}
 
 	cfg->InitLogStream(Logger::ilog, 'I');
-	cfg->InitLogStream(Logger::ilog, 'E');
+	cfg->InitLogStream(Logger::elog, 'E');
 
 	bool forked = false;
 #ifndef WIN32
@@ -62,6 +58,8 @@ main(int argc, char* argv[])
 		Logger::verbose = true;
 	VLOG << cfg->GetOptions();
 
+	PCAParser::Ptr pcaparser = PCAParser::GetInstance();
+	pcaparser->Parse(cfg->Filename(), cfg->ParseDir());
 	SetNonBlock(0); // stdin
 	ProcessManager pm;
 	pm.Loop();

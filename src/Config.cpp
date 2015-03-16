@@ -34,6 +34,12 @@ Config::SetDefaults()
 	verbose_          = false;
 	fork_             = false;
 	logging_          = "std";
+	filename_         = "";
+	dontclean_        = false;
+	parsedir_         = "/tmp/pcaproxy";
+	bind_addr_        = "127.0.0.1:48080";
+	backlog_          = 100;
+	tick_             = {1, 0};
 }
 
 inline std::string
@@ -47,7 +53,8 @@ expand_path(const std::string path)
 		{
 			std::cerr << _("Config: Error resolving path: ")
 			          << "\"" << path << "\""
-			          << _(" Message: ") << strerror(errno);
+			          << _(" Message: ") << strerror(errno)
+			          << std::endl;
 			return result;
 		}
 		result.assign(tmp);
@@ -69,15 +76,18 @@ void Config::InitLogStream(LogStream& log, const char type)
 int
 Config::ParseArgs(int argc, char* argv[])
 {
-	std::string opt_l, opt_c;
-	bool opt_V = false, opt_F = false;
+	std::string opt_l, opt_c, opt_b, opt_p;
+	bool opt_V = false, opt_F = false, opt_s = false;
 
-	const char *sopts = "VvFhl:c:";
+	const char *sopts = "VvFhl:c:b:";
 
 	const struct option lopts[] = {
+		{ "bind",              required_argument, NULL, 'b' },
 		{ "verbose",           no_argument,       NULL, 'V' },
 		{ "version",           no_argument,       NULL, 'v' },
 		{ "logging",           required_argument, NULL, 'l' },
+		{ "parsedir",          required_argument, NULL, 'p' },
+		{ "dontclean",         no_argument,       NULL, 's' },
 		{ "config",            required_argument, NULL, 'c' },
 		{ "fork",              no_argument,       NULL, 'F' },
 
@@ -92,8 +102,11 @@ Config::ParseArgs(int argc, char* argv[])
 		switch (opt)
 		{
 			case 'V': opt_V = true; break;
+			case 'b': opt_b = optarg; break;
 			case 'l': opt_l = optarg; break;
 			case 'c': opt_c = optarg; break;
+			case 'p': opt_p = optarg; break;
+			case 's': opt_s = true; break;
 			case 'F': opt_F = true; break;
 			case 'h': printHelp(); return 1;
 			case 'v': printVersion(); return 1;
@@ -105,7 +118,18 @@ Config::ParseArgs(int argc, char* argv[])
 	if (!opt_c.empty()) LoadFile(opt_c);
 	if (opt_V) verbose_ = true;
 	if (opt_F) fork_    = true;
-	if (!opt_l.empty()) logging_         = opt_l;
+	if (opt_s) dontclean_ = true;
+	if (!opt_p.empty()) parsedir_ = expand_path(opt_p);
+	if (!opt_b.empty()) bind_addr_ = opt_b;
+	if (!opt_l.empty()) logging_   = opt_l;
+
+	if (optind < argc)
+		filename_ = expand_path(argv[optind++]);
+	else
+		printInfo();
+
+	if (filename_.empty())
+		return -1;
 	return 0;
 }
 
@@ -179,7 +203,10 @@ Config::GetOptions() const
 	std::stringstream ss;
 	ss << "Options" << std::endl;
 	append_opt(ss, "Verbose"        , Verbose());
+	append_opt(ss, "BindAddr"       , BindAddr());
 	append_opt(ss, "Fork"           , Fork());
+	append_opt(ss, "ParseDir"       , ParseDir());
+	append_opt(ss, "DontClean"      , DontClean());
 	append_opt(ss, "Logging"        , Logging());
 	return ss.str();
 }
@@ -195,11 +222,11 @@ Config::printVersion() const
 void
 Config::printInfo() const
 {
-	std::cout << _("Survey (ver. ")
+	std::cout << _("PCAProxy (ver. ")
 	          << pcaproxy_VERSION_MAJOR << "."
 	          << pcaproxy_VERSION_MINOR << "."
 	          << pcaproxy_VERSION_PATCH << ")" << std::endl
-	          << _("Usage: survey [options]") << std::endl;
+	          << _("Usage: pcaproxy [options] <pcapfile>") << std::endl;
 }
 
 void
@@ -209,8 +236,11 @@ Config::printHelp() const
 	std::stringstream ss;
 	ss << std::endl << _("Options:") << std::endl;
 	append_hlp(ss, "c", "config"            , ""                 , _("load config from file"));
+	append_hlp(ss, "b", "bind-addr"         , BindAddr()         , _("bind address"));
 	append_hlp(ss, "V", "verbose"           , Verbose()          , _("make a lot of noise"));
 	append_hlp(ss, "F", "fork"              , Fork()             , _("fork to independent process"));
+	append_hlp(ss, "p", "parsedir"          , ParseDir()         , _("directory to save parsed data"));
+	append_hlp(ss, "s", "donclean"          , DontClean()        , _("do not clean parse directory on exit"));
 	append_hlp(ss, "l", "logging"           , Logging()          , _("logging destination"));
 	append_hlp(ss, "v", "version"           , ""                 , _("print version"));
 	append_hlp(ss, "h", "help"              , ""                 , _("print this message"));
@@ -292,7 +322,10 @@ Config::LoadFile(const std::string file, bool silent /* = false*/)
 					divisor + 1, ln.length() - divisor));
 
 		if     (name == "verbose"            ) verbose_          = str2bool(value);
+		else if(name == "bindaddr"           ) bind_addr_        = value;
 		else if(name == "logging"            ) logging_          = value;
+		else if(name == "parsedir"           ) parsedir_         = expand_path(value);
+		else if(name == "donclean"           ) dontclean_        = str2bool(value);
 		else if(name == "fork"               ) fork_             = str2bool(value);
 		else
 		{

@@ -1,0 +1,51 @@
+# Find libnet
+# Merder Kim <hoxnox@gmail.com>
+# 
+# input:
+#  NET_ROOT
+#  NET_USE_STATIC_LIBS
+#
+# output:
+#  NET_FOUND
+#  NET_INCLUDE_DIR
+#  NET_LIBRARIES
+#
+
+if(NET_INCLUDE_DIR AND NET_LIBRARIES)
+	set(NET_FIND_QUITELY TRUE) # cached
+endif(NET_INCLUDE_DIR AND NET_LIBRARIES)
+
+if(NOT DEFINED NET_ROOT)
+	set(NET_ROOT /usr /usr/local $ENV{NET_ROOT})
+endif(NOT DEFINED NET_ROOT)
+
+find_path(NET_INCLUDE_DIR libnet.h
+	PATHS ${NET_ROOT}
+	PATH_SUFFIXES libnet libnet/include include
+)
+
+if( NET_USE_STATIC_LIBS )
+	set( _NET_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+	if(WIN32)
+		set(CMAKE_FIND_LIBRARY_SUFFIXES .lib .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+	else()
+		set(CMAKE_FIND_LIBRARY_SUFFIXES .a )
+	endif()
+endif()
+
+find_library(NET_LIBRARIES
+	NAMES net
+	PATHS ${NET_ROOT}
+	PATH_SUFFIXES lib
+)
+mark_as_advanced(NET_INCLUDE_DIR NET_LIBRARIES)
+
+# Restore the original find library ordering
+if( NET_USE_STATIC_LIBS )
+	set(CMAKE_FIND_LIBRARY_SUFFIXES ${_NET_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
+endif()
+
+include("${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake")
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(NET DEFAULT_MSG NET_INCLUDE_DIR NET_LIBRARIES)
+
+
