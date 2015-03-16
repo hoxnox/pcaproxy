@@ -21,7 +21,7 @@ option(WITH_SYSTEM_LIBNIDS  "Use system's libnids" OFF)
 project(pcaproxy)
 
 set(pcaproxy_VERSION_MAJOR 0)
-set(pcaproxy_VERSION_MINOR 0)
+set(pcaproxy_VERSION_MINOR 1)
 set(pcaproxy_VERSION_PATCH 0)
 # configuration header
 configure_file(
