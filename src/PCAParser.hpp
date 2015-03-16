@@ -1,5 +1,5 @@
-/**@author $username$ <$usermail$>
- * @date $date$*/
+/**@author hoxnox <hoxnox@gmail.com>
+ * @date 20150316 16:36:18*/
 
 #ifndef __PCAPARSER_HPP__ 
 #define __PCAPARSER_HPP__ 

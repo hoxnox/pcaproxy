@@ -1,4 +1,4 @@
-/* @author $username$ <$usermail$>
+/* @author hoxnox <hoxnox@gmail.com>
  * @date 20130529 20:56:21 */
 
 #include "ProcessManagerBase.hpp"
