@@ -71,20 +71,29 @@ HttpReqInfo::update()
 void
 HttpReqInfo::parseHdrStr(const std::string& line)
 {
-	std::smatch sm;
-	if (regex_match(line, sm, rgx_host))
+	ssize_t colon_pos = line.find_first_of(':');
+	if(colon_pos == std::string::npos)
+		return;
+	std::string key = line.substr(0, colon_pos);
+	std::string val = line.substr(colon_pos + 1, line.length() - colon_pos);
+	key = tolower(trim(key));
+	val = tolower(trim(val));
+	if (key == "host")
 	{
-		url_ = "http://" + sm[1].str() + url_;
+		url_ = "http://" + val + url_;
 		update();
 		VLOG << _("HttpReqInfo: host found, URL updated.")
-		     << _(" Host: \"") << sm[1].str() << "\""
+		     << _(" Host: \"") << val << "\""
 		     << _(" URL: \"") << url_ << "\""
 		     << _(" UrlHash: ") << url_hash_;
+	}
+	else if (key == "referer")
+	{
+		referer_ = val;
 	}
 }
 
 HttpReqInfo::HttpReqInfo(const char* data, size_t dataln)
-	: rgx_host("^host:\\s*(.*)", std::regex::icase)
 {
 	for(ssize_t pos = 3; pos < dataln; ++pos)
 	{

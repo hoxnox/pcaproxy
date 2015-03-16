@@ -15,17 +15,20 @@ class HttpReqInfo
 public:
 	HttpReqInfo(const char* data, size_t dataln);
 	HttpReqInfo(const std::string& url);
-	std::string Method() const { return method_; };
+	std::string Method() const { return method_; }
 	std::string Url() const { return url_; }
-	std::string UrlHash() const { return url_hash_; };
+	std::string UrlHash() const { return url_hash_; }
 	std::string FName() const { return fname_; }
+	std::string Referer() const { return referer_; }
 private:
 	void parseReqStr(const std::string& line);
 	void parseHdrStr(const std::string& line);
 	void update();
 	std::string method_;
-	std::regex  rgx_host;
+	std::regex  rgx_host_;
+	std::regex  rgx_referer_;
 	std::string url_hash_;
+	std::string referer_;
 	std::string url_;
 	std::string fname_;
 	static std::hash<std::string> hashFn;

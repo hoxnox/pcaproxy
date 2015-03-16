@@ -28,6 +28,7 @@
 namespace pcaproxy {
 
 PCAParser::Ptr PCAParser::instance_(NULL);
+std::vector<HttpReqInfo> PCAParser::main_reqs_;
 
 void
 PCAParser::nidsLogger(int type, int err, struct ip *iph, void *data)
@@ -151,7 +152,11 @@ PCAParser::splitHttpRequests(const std::vector<char>& data,
 		left = right + 4;
 		right = std::search(left, end, delim.begin(), delim.end());
 	}
+
 	HttpReqInfo ireq(left, end - left);
+	if (ireq.Referer().empty())
+		main_reqs_.push_back(ireq);
+
 	result.push_back(ireq);
 }
 
