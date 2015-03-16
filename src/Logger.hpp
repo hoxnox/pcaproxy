@@ -1,4 +1,4 @@
-/* @author $username$ <$usermail$>
+/* @author hoxnox <hoxnox@gmail.com>
  * @date 20130408 11:07:48
  *
  * Logger helpers definitions */
