@@ -48,7 +48,7 @@ inline int init_sock(const struct sockaddr_storage& addr)
 
 void PCAProxy::heartbeat(int, short int, void *self)
 {
-	//VLOG << "Heartbeat";
+	// VLOG << "Heartbeat";
 	if (!self)
 		return;
 	PCAProxy* this_ = reinterpret_cast<PCAProxy*>(self);
@@ -135,7 +135,8 @@ PCAProxy::onRequest(struct evhttp_request * evreq, void * arg)
 			          " Can't find colon in the header line.")
 			     << _(" Filename: ") << req.FName()
 			     << _(" Line: ") << *i;
-			evhttp_send_error(evreq, 500, "Datafile has wrong structure.");
+			evhttp_send_error(evreq, 500, (std::string() + "Datafile \"" 
+					+ req.FName() + "\" has wrong structure.").c_str());
 			return;
 		}
 		std::string key = i->substr(0, colon_pos);

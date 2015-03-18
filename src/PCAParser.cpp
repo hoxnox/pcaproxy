@@ -1,19 +1,6 @@
 /**@author hoxnox <hoxnox@gmail.com>
  * @date 20150316 16:36:18 */
 
-
-#include <nids.h>
-#include "PCAParser.hpp"
-#include "HttpReqInfo.hpp"
-#include "Config.hpp"
-
-#include <Logger.hpp>
-#include <Endians.hpp>
-#include <utils/NxSocket.h>
-#include <utils/MkDir.h>
-#include <utils/Utils.hpp>
-#include <gettext.h>
-
 #include <cstring>
 #include <string>
 #include <sstream>
@@ -25,32 +12,18 @@
 #include <functional>
 #include <algorithm>
 
+#include <Logger.hpp>
+#include <Endians.hpp>
+#include <utils/NxSocket.h>
+#include <utils/MkDir.h>
+#include <utils/Utils.hpp>
+#include <gettext.h>
+
+#include "PCAParser.hpp"
+#include "HttpReqInfo.hpp"
+#include "Config.hpp"
+
 namespace pcaproxy {
-
-PCAParser::Ptr PCAParser::instance_(NULL);
-std::vector<HttpReqInfo> PCAParser::main_reqs_;
-
-void
-PCAParser::nidsLogger(int type, int err, struct ip *iph, void *data)
-{
-	/*
-	if (type == 2 && err == 8) // WTF?!
-		return;
-		*/
-	ILOG << "NIDS error: "
-	     << _(" Message type: ") << type
-	     << _(" Error code: ") << err;
-}
-
-inline std::string
-addr_info(const struct tuple4& addr, std::string delim = "vs")
-{
-	std::stringstream ss;
-	ss << inet_ntos(addr.saddr) << ":" << addr.source;
-	ss << " " << delim << " ";
-	ss << inet_ntos(addr.daddr) << ":" << addr.dest;
-	return ss.str();
-}
 
 template <class InputIterator> inline void
 write_to_file(const std::string& fname, InputIterator begin, InputIterator end, bool append = true)
@@ -73,67 +46,6 @@ write_to_file(const std::string& fname, InputIterator begin, InputIterator end, 
 	}
 	ofile.close();
 }
-
-void
-PCAParser::tcpCallback(struct tcp_stream *stream, void** params)
-{
-	if (stream->addr.dest != 80 && stream->addr.source != 80)
-	{
-		VLOG << _("PCAParser: skipping traffic: ") << addr_info(stream->addr);
-		return;
-	}
-	char* udata = reinterpret_cast<char*>(stream->user);
-	if (stream->nids_state == NIDS_JUST_EST)
-	{
-		stream->client.collect++;
-		stream->server.collect++;
-		std::stringstream ss;
-		ss << parse_dir_ << "/";
-		ss << std::setw(sizeof(stream->hash_index)*2)
-			<< std::setfill('0') << std::hex << stream->hash_index;
-		std::string new_prefix = ss.str();
-		if (check_create_dir(new_prefix))
-		{
-			udata = new char[new_prefix.length() + 1];
-			std::uninitialized_fill(udata, udata + new_prefix.length() + 1, 0);
-			std::copy(new_prefix.begin(), new_prefix.end(), udata);
-			stream->user = udata;
-		}
-		return;
-	}
-	else if (stream->nids_state == NIDS_DATA)
-	{
-		std::string fprefix;
-		if (stream->user != NULL)
-			fprefix.assign(reinterpret_cast<char*>(stream->user));
-		if (!fprefix.empty())
-		{
-			if (stream->client.count_new > 0)
-			{
-				write_to_file(fprefix + ".rsp", stream->client.data,
-					stream->client.data + stream->client.count_new);
-			}
-			if (stream->server.count_new > 0)
-			{
-				write_to_file(fprefix + ".req", stream->server.data,
-					stream->server.data + stream->server.count_new);
-			}
-		}
-	}
-	else if (stream->nids_state == NIDS_CLOSE
-	      || stream->nids_state == NIDS_RESET
-	      || stream->nids_state == NIDS_TIMED_OUT
-	      || stream->nids_state == NIDS_EXITING)
-	{
-		if (stream->user)
-		{
-			delete [] udata;
-			stream->user = NULL;
-		}
-	}
-}
-
-std::string PCAParser::parse_dir_ = ".";
 
 void
 PCAParser::splitHttpRequests(const std::vector<char>& data,
@@ -252,30 +164,240 @@ PCAParser::splitHttp()
 	}
 }
 
-void
+bool
 PCAParser::Parse(const std::string& input_file, const std::string& output_dir)
 {
-	parse_dir_ = output_dir;
-	nids_params.n_tcp_streams = 4096;
-	nids_params.filename = const_cast<char*>(input_file.c_str());
-	nids_params.device = NULL;
-	nids_params.syslog = (void (*)())PCAParser::nidsLogger;
-	nids_params.syslog_level = 1;
-	nids_params.scan_num_hosts = 0;
-	VLOG << "Initializing PCAParser.";
-	if (!nids_init())
+	if (!initPCAP(input_file))
+		return false;
+	Config::Ptr cfg = Config::GetInstance();
+	parse_dir_ = cfg->ParseDir(); // we must fix parse_dir till parse has finished
+	check_create_dir(parse_dir_ + "/");
+
+	ntoh_init();
+	unsigned int error;
+
+	tcp_session_.reset(ntoh_tcp_new_session(0, 0, &error));
+	if (!tcp_session_)
 	{
-		ELOG << _("PCAParser: error initializing NIDS.")
-		     << _(" Message: ") << nids_errbuf;
+		ELOG << _("PCAParser: error initializing new tcp session.")
+		     << _(" Message: ") << ntoh_get_errdesc(error);
+		return false;
 	}
-	struct nids_chksum_ctl nocksum = {0, 0, NIDS_DONT_CHKSUM};
-	nids_register_chksum_ctl(&nocksum, 1);
-	nids_register_tcp((void *)tcpCallback);
-	nids_run();
-	nids_unregister_tcp((void *)tcpCallback);
-	nids_exit();
+
+	ipv4_session_.reset(ntoh_ipv4_new_session(0, 0, &error));
+	if (!ipv4_session_)
+	{
+		ELOG << _("PCAParser: error initializing new ipv4 session.")
+		     << _(" Message: ") << ntoh_get_errdesc(error);
+		return false;
+	}
+
+	const unsigned char *packet = 0;
+	struct pcap_pkthdr header;
+	while ((packet = pcap_next(pcap_.get(), &header)) != 0)
+	{
+		const int SIZE_ETHERNET = 14;
+		struct ip* ip = (struct ip*) (packet + SIZE_ETHERNET);
+		if ((ip->ip_hl * 4) < sizeof(struct ip))
+			continue;
+		if (NTOH_IPV4_IS_FRAGMENT(ip->ip_off))
+			sendIPv4Fragment(ip);
+		else if (ip->ip_p == IPPROTO_TCP)
+			sendTCPSegment(ip);
+	}
+	pcap_.reset(NULL);
+	//ntoh_exit(); BROKES SIGNAL
+
 	splitHttp();
+
+	return true;
 }
+
+void
+PCAParser::tcpCallback(pntoh_tcp_stream_t stream,
+                       pntoh_tcp_peer_t orig,
+                       pntoh_tcp_peer_t dest,
+                       pntoh_tcp_segment_t seg,
+                       int reason,
+                       int extra)
+{
+	if (ntohs(dest->port) != 80 && ntohs(orig->port) != 80)
+		return;
+	PCAParser* this_ = NULL;
+	if (stream && stream->udata)
+		this_ = reinterpret_cast<PCAParser*>(stream->udata);
+	if (!this_)
+		ELOG << _("PCAParser: stream doesn't contain user defined data.");
+	char* data = NULL;
+	if (seg != 0 && seg->user_data)
+		data = reinterpret_cast<char*>(seg->user_data);
+	if (reason == NTOH_REASON_DATA && data != NULL && this_ != NULL)
+	{
+		std::stringstream name;
+		name << this_->parse_dir_ << '/'
+		     << std::setw(sizeof(ntoh_tcp_key_t)*2) << std::setfill('0') << std::hex << stream->key;
+		if (ntohs(dest->port) == 80)
+			write_to_file(name.str() + ".req", data, data + seg->payload_len);
+		else if(ntohs(orig->port) == 80)
+			write_to_file(name.str() + ".rsp", data, data + seg->payload_len);
+		if (extra != 0)
+		{
+			ELOG << _("PCAParser: libntoh got extra info in tcpCallback.")
+			     << _(" Code: ") << extra
+			     << _(" Message: ") << ntoh_get_reason(extra);
+		}
+	}
+	else
+	{
+		if (extra == NTOH_REASON_MAX_SYN_RETRIES_REACHED
+		 || extra == NTOH_REASON_MAX_SYNACK_RETRIES_REACHED
+		 || extra == NTOH_REASON_HSFAILED
+		 || extra == NTOH_REASON_EXIT
+		 || extra == NTOH_REASON_TIMEDOUT
+		 || extra == NTOH_REASON_CLOSED)
+		{
+			//VLOG << _("PCAParser: deleting stream");
+		}
+	}
+	if (data)
+		delete [] data;
+}
+
+void
+PCAParser::ipv4Callback(pntoh_ipv4_flow_t flow,
+                        pntoh_ipv4_tuple4_t tuple,
+                        unsigned char *data,
+                        size_t len,
+                        unsigned short reason)
+{
+	if ( tuple->protocol == IPPROTO_TCP )
+	{
+		if(flow && flow->udata)
+		{
+			PCAParser *this_ = reinterpret_cast<PCAParser*>(flow->udata);
+			this_->sendTCPSegment((struct ip*)data);
+		}
+	}
+	return;
+
+}
+
+void
+PCAParser::sendTCPSegment(struct ip *iphdr)
+{
+	unsigned int error;
+
+	size_t size_ip = iphdr->ip_hl * 4;
+	struct tcphdr* tcp = (struct tcphdr*)((unsigned char*)iphdr + size_ip);
+	size_t size_tcp = tcp->th_off * 4;
+	if (size_tcp < sizeof(struct tcphdr))
+		return;
+	ntoh_tcp_tuple5_t tcpt5;
+	ntoh_tcp_get_tuple5(iphdr, tcp ,&tcpt5);
+
+	if (ntohs(tcpt5.sport) != 80 && ntohs(tcpt5.dport) != 80)
+		return;
+
+	pntoh_tcp_stream_t stream = ntoh_tcp_find_stream(tcp_session_.get(), &tcpt5);
+	if (!stream)
+	{
+		stream = ntoh_tcp_new_stream(tcp_session_.get(), &tcpt5, tcpCallback, this, &error, 1, 1);
+		if (!stream)
+		{
+			ELOG << _("PCAParser: error creating new stream.")
+			     << _(" Message: ") << ntoh_get_errdesc(error);
+			return;
+		}
+	}
+
+	size_t total_len = ntohs(iphdr->ip_len);
+	size_t size_payload = total_len - ( size_ip + size_tcp );
+	char* payload = NULL;
+	if (size_payload > 0)
+	{
+		payload = new char[size_payload];
+		char* payload_pos = (char *)iphdr + size_ip + size_tcp; 
+		std::copy(payload_pos, payload_pos + size_payload, payload);
+	}
+
+	int rs = ntoh_tcp_add_segment(tcp_session_.get(), stream, iphdr, total_len, payload);
+	if (rs != NTOH_OK)
+	{
+		if (rs != NTOH_SYNCHRONIZING)
+		{
+			VLOG << _("PCAParser: error adding TCP segment.")
+			     << _(" Message: ") << ntoh_get_retval_desc(rs);
+		}
+		if (payload)
+			delete [] payload;
+	}
+}
+
+void
+PCAParser::sendIPv4Fragment(struct ip *iphdr)
+{
+	unsigned int error;
+
+	ntoh_ipv4_tuple4_t ipt4;
+	ntoh_ipv4_get_tuple4(iphdr , &ipt4);
+	pntoh_ipv4_flow_t flow = ntoh_ipv4_find_flow(ipv4_session_.get() , &ipt4);
+	if (!flow)
+	{
+		flow = ntoh_ipv4_new_flow(ipv4_session_.get(), &ipt4, ipv4Callback, this, &error);
+		if (!flow)
+		{
+			ELOG << _("PCAParser: error creating new IPv4 flow.")
+			     << _("Message: ") << ntoh_get_errdesc(error);
+			return;
+		}
+	}
+
+	size_t total_len = ntohs(iphdr->ip_len);
+	int rs = ntoh_ipv4_add_fragment(ipv4_session_.get(), flow, iphdr, total_len);
+	if (rs)
+	{
+		ELOG << _("PCAParser: error adding IPv4 to flow.")
+		     << _(" Message: ") << ntoh_get_retval_desc(rs);
+	}
+}
+
+bool
+PCAParser::initPCAP(std::string fname)
+{
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_.reset(pcap_open_offline(fname.c_str(), errbuf));
+	if (!pcap_)
+	{
+		ELOG << _("PCAParser: error pcap initialization.")
+		     << _(" Message: ") << errbuf;
+		return false;
+	}
+	struct bpf_program fp;
+	if (pcap_compile(pcap_.get(), &fp, "tcp and port 80", 0, 0) < 0)
+	{
+		ELOG << _("PCAParser: error initializing pcap filter.")
+		     << _(" Message: ") << pcap_geterr(pcap_.get());
+		return false;
+	}
+	if (pcap_setfilter(pcap_.get(), &fp) < 0)
+	{
+		ELOG << _("PCAParser: Error pcap filter apply.")
+		     << _(" Message: ") << pcap_geterr(pcap_.get());
+		pcap_freecode(&fp);
+		return false;
+	}
+	pcap_freecode(&fp);
+	if (pcap_datalink(pcap_.get()) != DLT_EN10MB)
+	{
+		ELOG << _("PCAParser: Link layer is not Ethernet.");
+		return false;
+	}
+	VLOG << _("PCAParser: libpcap inititalized.")
+	     << _(" File: \"") << fname << "\""
+	     << _(" Desc: ") << pcap_datalink_val_to_description(pcap_datalink(pcap_.get()));
+	return true;
+}
+
 
 } // namespace
 

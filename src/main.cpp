@@ -58,7 +58,6 @@ main(int argc, char* argv[])
 		Logger::verbose = true;
 	VLOG << cfg->GetOptions();
 
-	SetNonBlock(0); // stdin
 	ProcessManager pm;
 	pm.Loop();
 

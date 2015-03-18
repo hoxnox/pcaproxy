@@ -22,10 +22,10 @@ ProcessManager::~ProcessManager()
 bool ProcessManager::doStart()
 {
 	Config::Ptr cfg = Config::GetInstance();
-	PCAParser::Ptr pcaparser = PCAParser::GetInstance();
-	pcaparser->Parse(cfg->Filename(), cfg->ParseDir());
+	PCAParser pcaparser;
+	pcaparser.Parse(cfg->Filename(), cfg->ParseDir());
 	std::set<std::string> main_reqs;
-	pcaparser->GetMainReqs(std::inserter(main_reqs, main_reqs.end()));
+	pcaparser.GetMainReqs(std::inserter(main_reqs, main_reqs.end()));
 	std::string index = 
 		"<HTML>"
 			"<HEAD>"
@@ -56,11 +56,14 @@ bool ProcessManager::doStart()
 bool ProcessManager::doStop()
 {
 	Config::Ptr cfg = Config::GetInstance();
-	VLOG << ("Removing *.req, *.rsp and *.dat from \"" + cfg->ParseDir() + "\"");
-	system((std::string("rm \"") + cfg->ParseDir() + "\"/*.req").c_str());
-	system((std::string("rm \"") + cfg->ParseDir() + "\"/*.rsp").c_str());
-	system((std::string("rm \"") + cfg->ParseDir() + "\"/*.dat").c_str());
 	proxy_.Stop();
+	if (!cfg->DontClean())
+	{
+		VLOG << ("Removing *.req, *.rsp and *.dat from \"" + cfg->ParseDir() + "\"");
+		system((std::string("rm -f \"") + cfg->ParseDir() + "\"/*.req").c_str());
+		system((std::string("rm -f \"") + cfg->ParseDir() + "\"/*.rsp").c_str());
+		system((std::string("rm -f \"") + cfg->ParseDir() + "\"/*.dat").c_str());
+	}
 	proxy_thread_->join();
 	return true;
 }

@@ -79,7 +79,7 @@ Config::ParseArgs(int argc, char* argv[])
 	std::string opt_l, opt_c, opt_b, opt_p;
 	bool opt_V = false, opt_F = false, opt_s = false;
 
-	const char *sopts = "VvFhl:c:b:";
+	const char *sopts = "VvFhsl:c:b:";
 
 	const struct option lopts[] = {
 		{ "bind",              required_argument, NULL, 'b' },

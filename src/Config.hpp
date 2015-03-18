@@ -24,15 +24,15 @@ public:
 	std::string GetOptions() const;
 	void        InitLogStream(LogStream& log, const char type);
 
-	bool           Verbose()   const { return verbose_;          }
-	bool           Fork()      const { return fork_;             }
-	std::string    Logging()   const { return logging_;          }
-	std::string    BindAddr()  const { return bind_addr_;        }
-	std::string    Filename()  const { return filename_;         }
-	std::string    ParseDir()  const { return parsedir_;         }
-	bool           DontClean() const { return dontclean_;        }
-	int            Backlog()   const { return backlog_;          }
-	struct timeval Tick()      const { return tick_;             }
+	bool           Verbose()    const { return verbose_;          }
+	bool           Fork()       const { return fork_;             }
+	std::string    Logging()    const { return logging_;          }
+	std::string    BindAddr()   const { return bind_addr_;        }
+	std::string    Filename()   const { return filename_;         }
+	std::string    ParseDir()   const { return parsedir_;         }
+	bool           DontClean()  const { return dontclean_;        }
+	int            Backlog()    const { return backlog_;          }
+	struct timeval Tick()       const { return tick_;             }
 
 	static const std::string DEFAULT_CONFIG_FILE;
 	static const std::string DEFAULT_USER_CONFIG_FILE;

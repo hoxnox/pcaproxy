@@ -58,28 +58,23 @@ else()
 	find_package(Pcap REQUIRED)
 endif()
 include_directories(${Pcap_INCLUDE_DIR})
+list(APPEND LIBRARIES ${Pcap_LIBRARIES})
 
 ########################################################################
-# libnids
+# libntoh
 
-if(NOT WITH_SYSTEM_NIDS)
-	include(ExternalProject)
-	ExternalProject_Add(libnids
-		URL "http://sourceforge.net/projects/libnids/files/libnids/1.24/libnids-1.24.tar.gz/download"
-		URL_MD5 "72d37c79c85615ffe158aa524d649610"
-		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --enable-static --disable-shared --disable-libglib --disable-libnet
-		BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libnids-prefix/src/libnids
-		INSTALL_DIR "${DEPS_ROOT}"
-		INSTALL_COMMAND make install
-		DEPENDS libpcap
-	)
-	set(NIDS_INCLUDE_DIR ${DEPS_ROOT}/include)
-	set(NIDS_LIBRARIES ${DEPS_ROOT}/lib/libnids.a)
-else()
-	find_package(NIDS REQUIRED)
-endif()
-include_directories(${NIDS_INCLUDE_DIR})
-list(APPEND LIBRARIES ${NIDS_LIBRARIES} ${Pcap_LIBRARIES})
+set(DEPS_ROOT "${CMAKE_CURRENT_BINARY_DIR}/deps")
+include(ExternalProject)
+ExternalProject_Add(libntoh
+	URL "https://github.com/hoxnox/libntoh/archive/v0.5.0-nx.tar.gz"
+	URL_MD5 "5eee010304705e5e499006fe39fc4105"
+	CONFIGURE_COMMAND cmake -D CMAKE_INSTALL_PREFIX=<INSTALL_DIR> <SOURCE_DIR>/src 
+	INSTALL_DIR "${DEPS_ROOT}"
+)
+set(LIBNTOH_INCLUDE_DIR ${DEPS_ROOT}/include)
+set(LIBNTOH_LIBRARIES ${DEPS_ROOT}/lib/libntoh.a)
+include_directories(${LIBNTOH_INCLUDE_DIR})
+list(APPEND LIBRARIES ${LIBNTOH_LIBRARIES})
 
 ########################################################################
 # libevent
@@ -154,6 +149,7 @@ add_executable(pcaproxy
 )
 set_target_properties(pcaproxy PROPERTIES COMPILE_FLAGS "-std=c++0x")
 target_link_libraries(pcaproxy ${LIBRARIES})
+add_dependencies(pcaproxy libpcap libntoh libpcap supply_lib nx_socket mkdir)
 
 ########################################################################
 # docs

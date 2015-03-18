@@ -51,10 +51,12 @@ HttpReqInfo::parseReqStr(const std::string& line)
 	url_ = line.substr(left, right - left);
 	url_ = trim(url_);
 	update();
+	/*
 	VLOG << _("HttpReqInfo: fetched request.")
 	     << _(" Method: \"") << method_ << "\""
 	     << _(" URL: \"") << url_ << "\""
 	     << _(" URL hash: ") << url_hash_;
+		 */
 }
 
 void
@@ -82,10 +84,12 @@ HttpReqInfo::parseHdrStr(const std::string& line)
 	{
 		url_ = "http://" + val + url_;
 		update();
+		/*
 		VLOG << _("HttpReqInfo: host found, URL updated.")
 		     << _(" Host: \"") << val << "\""
 		     << _(" URL: \"") << url_ << "\""
 		     << _(" UrlHash: ") << url_hash_;
+			 */
 	}
 	else if (key == "referer")
 	{
