@@ -1,5 +1,5 @@
-/**@author $username$ <$usermail$>
- * @date $date$ */
+/**@author hoxnox <hoxnox@gmail.com>
+ * @date 20150316 16:36:18 */
 
 
 #include <nids.h>
@@ -28,6 +28,7 @@
 namespace pcaproxy {
 
 PCAParser::Ptr PCAParser::instance_(NULL);
+std::vector<HttpReqInfo> PCAParser::main_reqs_;
 
 void
 PCAParser::nidsLogger(int type, int err, struct ip *iph, void *data)
@@ -147,11 +148,26 @@ PCAParser::splitHttpRequests(const std::vector<char>& data,
 	while (end - right > 7)
 	{
 		HttpReqInfo ireq(left, right - left);
-		result.push_back(ireq);
 		left = right + 4;
 		right = std::search(left, end, delim.begin(), delim.end());
+		if (ireq.Method() != "GET")
+			continue;
+		if (ireq.Referer().empty())
+		{
+			VLOG << "Pushing to main: " << ireq.Url();
+			main_reqs_.push_back(ireq);
+		}
+		result.push_back(ireq);
 	}
+
 	HttpReqInfo ireq(left, end - left);
+	if (ireq.Method() != "GET")
+		return;
+	if (ireq.Referer().empty())
+	{
+		VLOG << "Pushing to main: " << ireq.Url();
+		main_reqs_.push_back(ireq);
+	}
 	result.push_back(ireq);
 }
 

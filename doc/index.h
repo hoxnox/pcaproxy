@@ -1,13 +1,13 @@
 ﻿////////////////////////////////////////////////////////////////////////
 // index.h
-// Author: $username$ <$usermail$>
+// Author: hoxnox <hoxnox@gmail.com>
 ////////////////////////////////////////////////////////////////////////
 
 /**
 
 @image html main_logo.png
-@author $username$ <$usermail$>
-@date $date$
+@author hoxnox <hoxnox@gmail.com>
+@date 20150316 16:36:18
 
 @mainpage pcaproxy
 

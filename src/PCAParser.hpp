@@ -1,5 +1,5 @@
-/**@author $username$ <$usermail$>
- * @date $date$*/
+/**@author hoxnox <hoxnox@gmail.com>
+ * @date 20150316 16:36:18*/
 
 #ifndef __PCAPARSER_HPP__ 
 #define __PCAPARSER_HPP__ 
@@ -7,6 +7,8 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <algorithm>
+#include <functional>
 #include <map>
 #include <memory>
 #include <HttpReqInfo.hpp>
@@ -27,6 +29,8 @@ public:
 			instance_.reset(new PCAParser);
 		return instance_;
 	}
+	template<class OutIter>
+	void GetMainReqs(OutIter out) const;
 private:
 	static void nidsLogger(int type, int err, struct ip *iph, void *data);
 	static void tcpCallback(struct tcp_stream *stream, void** params);
@@ -39,10 +43,17 @@ private:
 	                        const std::vector<HttpReqInfo>& requests);
 	static std::string                                 parse_dir_;
 	static std::shared_ptr<PCAParser>                  instance_;
+	static std::vector<HttpReqInfo>                    main_reqs_;
 };
 
-} // namespace
+template<class OutIter> inline void
+PCAParser::GetMainReqs(OutIter out) const 
+{
+	std::for_each(main_reqs_.begin(), main_reqs_.end(),
+			[&out](const HttpReqInfo& req) { *out++ = req.Url(); });
+}
 
+} // namespace
 
 #endif // __PCAPARSER_HPP__
 

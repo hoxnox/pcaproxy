@@ -1,5 +1,5 @@
-/**@author $username$ <$usermail$>
- * @date $date$ */
+/**@author hoxnox <hoxnox@gmail.com>
+ * @date 20150316 16:36:18 */
 
 #include <Config.hpp>
 #include <ProcessManager.hpp>
@@ -58,8 +58,6 @@ main(int argc, char* argv[])
 		Logger::verbose = true;
 	VLOG << cfg->GetOptions();
 
-	PCAParser::Ptr pcaparser = PCAParser::GetInstance();
-	pcaparser->Parse(cfg->Filename(), cfg->ParseDir());
 	SetNonBlock(0); // stdin
 	ProcessManager pm;
 	pm.Loop();

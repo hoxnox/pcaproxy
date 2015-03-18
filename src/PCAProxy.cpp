@@ -1,5 +1,5 @@
-/**@author $username$ <$usermail$>
- * @date $date$ */
+/**@author hoxnox <hoxnox@gmail.com>
+ * @date 20150316 16:36:18 */
 
 #include "PCAProxy.hpp"
 #include "HttpReqInfo.hpp"
@@ -99,7 +99,9 @@ PCAProxy::onRequest(struct evhttp_request * evreq, void * arg)
 		VLOG << _("PCAProxy: no file corresponds.")
 		     << _(" FileName: ") << req.FName()
 		     << _(" URL: ") << req.Url();
-		evhttp_send_error(evreq, HTTP_NOTFOUND, "No such data in the pcap file.");
+		evbuffer_add(this_->evbuf_.get(), &this_->index_page_[0],
+		                                  this_->index_page_.size());
+		evhttp_send_reply(evreq, HTTP_OK, "", this_->evbuf_.get());
 		return;
 	}
 	std::vector<char> header_raw;
