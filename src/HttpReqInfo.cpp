@@ -75,7 +75,7 @@ HttpReqInfo::parseHdrStr(const std::string& line)
 	if(colon_pos == std::string::npos)
 		return;
 	std::string key = line.substr(0, colon_pos);
-	std::string val = line.substr(colon_pos + 1, line.length() - colon_pos);
+	std::string val = line.substr(colon_pos + 1, line.length() - colon_pos - 1);
 	key = tolower(trim(key));
 	val = tolower(trim(val));
 	if (key == "host")

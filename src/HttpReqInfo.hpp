@@ -6,7 +6,6 @@
 
 #include <functional>
 #include <string>
-#include <regex>
 
 namespace pcaproxy {
 
@@ -25,8 +24,6 @@ private:
 	void parseHdrStr(const std::string& line);
 	void update();
 	std::string method_;
-	std::regex  rgx_host_;
-	std::regex  rgx_referer_;
 	std::string url_hash_;
 	std::string referer_;
 	std::string url_;

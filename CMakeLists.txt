@@ -127,29 +127,33 @@ list(APPEND LIBRARIES mkdir)
 ########################################################################
 # pcaproxy
 
-add_executable(pcaproxy
-	src/main.cpp
-
-	src/ProcessManager.hpp
-	src/ProcessManager.cpp
+add_library(supply_lib
+	STATIC
+	src/utils/ProcessManagerBase.hpp
+	src/utils/ProcessManagerBase.cpp
+	src/utils/LogStream.hpp
+	src/utils/LogStream.cpp
 	src/Logger.hpp
 	src/Logger.cpp
 	src/Config.hpp
 	src/Config.cpp
+)
+set_target_properties(supply_lib PROPERTIES COMPILE_FLAGS "-std=c++0x")
+list(APPEND LIBRARIES supply_lib)
+
+add_executable(pcaproxy
+	src/main.cpp
+	src/ProcessManager.hpp
+	src/ProcessManager.cpp
 	src/PCAProxy.hpp
 	src/PCAProxy.cpp
 	src/PCAParser.hpp
 	src/PCAParser.cpp
 	src/HttpReqInfo.hpp
 	src/HttpReqInfo.cpp
-
-	src/utils/LogStream.hpp
-	src/utils/LogStream.cpp
-	src/utils/ProcessManagerBase.hpp
-	src/utils/ProcessManagerBase.cpp
 )
-target_link_libraries(pcaproxy ${LIBRARIES})
 set_target_properties(pcaproxy PROPERTIES COMPILE_FLAGS "-std=c++0x")
+target_link_libraries(pcaproxy ${LIBRARIES})
 
 ########################################################################
 # docs
@@ -177,10 +181,7 @@ function(nx_GTEST_ADD_TESTS executable extra_args)
 		string(REGEX MATCHALL "TEST_?F?\\(([A-Za-z_0-9 ,]+)\\)"
 			found_tests ${contents})
 		foreach(hit ${found_tests})
-			string(REGEX REPLACE ".*\\( *([A-Za-z_0-9]+),"
-			                     " *([A-Za-z_0-9]+) *\\).*"
-			                     "\\1.\\2"
-			                     test_name ${hit})
+			string(REGEX REPLACE ".*\\( *([A-Za-z_0-9]+), *([A-Za-z_0-9]+) *\\).*" "\\1.\\2" test_name ${hit})
 			add_test("${executable}-${test_name}"
 				${executable}
 				--gtest_filter=${test_name}
@@ -191,7 +192,10 @@ endfunction()
 
 if(WITH_TESTS)
 	set(SOURCES_TEST
-		./test/test.cpp)
+		./test/test.cpp
+		./test/tHttpReqInfo.hpp
+		./src/HttpReqInfo.hpp
+		./src/HttpReqInfo.cpp)
 	enable_testing()
 	find_package(GTest REQUIRED)
 	include_directories(${GTEST_INCLUDE_DIRS})
@@ -201,7 +205,8 @@ if(WITH_TESTS)
 		SET_TARGET_PROPERTIES(${TEST} 
 			PROPERTIES LINK_FLAGS -pthread)
 	endif(NOT WIN32)
-	target_link_libraries("${TEST}" ${GTEST_LIBRARIES} ${LIBRARIES})
+	set_target_properties("${TEST}" PROPERTIES COMPILE_FLAGS "-std=c++0x")
+	target_link_libraries("${TEST}" ${GTEST_LIBRARIES} supply_lib nx_socket)
 	nx_GTEST_ADD_TESTS("${TEST}" ${SOURCES_TEST})
 endif()
 
