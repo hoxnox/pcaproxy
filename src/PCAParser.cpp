@@ -13,7 +13,6 @@
 #include <algorithm>
 
 #include <Logger.hpp>
-#include <Endians.hpp>
 #include <utils/NxSocket.h>
 #include <utils/MkDir.h>
 #include <utils/Utils.hpp>
@@ -21,7 +20,6 @@
 
 #include "PCAParser.hpp"
 #include "HttpReqInfo.hpp"
-#include "Config.hpp"
 
 namespace pcaproxy {
 
@@ -108,7 +106,6 @@ bool
 PCAParser::saveToFiles(const std::vector<std::vector<char> >& responses,
                        const std::vector<HttpReqInfo>& requests)
 {
-	Config::Ptr cfg = Config::GetInstance();
 	if (responses.size() != requests.size())
 	{
 		ELOG << _("PCAParser: requests count didn't match responses count"
@@ -169,8 +166,7 @@ PCAParser::Parse(const std::string& input_file, const std::string& output_dir)
 {
 	if (!initPCAP(input_file))
 		return false;
-	Config::Ptr cfg = Config::GetInstance();
-	parse_dir_ = cfg->ParseDir(); // we must fix parse_dir till parse has finished
+	parse_dir_ = output_dir; // we must fix parse_dir till parse has finished
 	check_create_dir(parse_dir_ + "/");
 
 	ntoh_init();
