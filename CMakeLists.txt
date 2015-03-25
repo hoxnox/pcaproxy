@@ -25,7 +25,7 @@ project(pcaproxy)
 
 set(pcaproxy_VERSION_MAJOR 0)
 set(pcaproxy_VERSION_MINOR 2)
-set(pcaproxy_VERSION_PATCH 1)
+set(pcaproxy_VERSION_PATCH 2)
 # configuration header
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/pcaproxy_config.cfg"
