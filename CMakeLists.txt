@@ -3,6 +3,7 @@
 # pcaproxy cmake build script
 
 cmake_minimum_required(VERSION 2.6.4)
+include(ExternalProject)
 
 ########################################################################
 # options
@@ -11,9 +12,11 @@ option(WITH_TESTS           "Build tests."  OFF)
 option(WITH_DOCS            "Generate docs" OFF)
 
 # Don't download and build lib - find system's one if ON
-option(WITH_SYSTEM_LIBPCAP  "Use system's libpcap" OFF)
+option(WITH_SYSTEM_LIBPCAP  "Use system's libpcap"  OFF)
+option(WITH_SYSTEM_FLEX     "Use system's flex"     OFF)
+option(WITH_SYSTEM_BISON    "Use system's bison"    OFF)
 option(WITH_SYSTEM_LIBEVENT "Use system's libevent" OFF)
-option(WITH_SYSTEM_LIBNIDS  "Use system's libnids" OFF)
+option(WITH_SYSTEM_LIBNIDS  "Use system's libnids"  OFF)
 
 ########################################################################
 # general
@@ -36,6 +39,7 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
 include_directories("${PROJECT_SOURCE_DIR}/src")
 set(DEPS_ROOT "${CMAKE_CURRENT_BINARY_DIR}/deps")
 
+
 ########################################################################
 # threads
 
@@ -45,25 +49,66 @@ find_package(Threads REQUIRED)
 # libpcap
 
 if(NOT WITH_SYSTEM_LIBPCAP)
-	include(ExternalProject)
+	if (NOT WITH_SYSTEM_FLEX)
+		ExternalProject_Add(flex
+			URL "http://sourceforge.net/projects/flex/files/flex-2.5.39.tar.gz/download"
+			URL_MD5 "e133e9ead8ec0a58d81166b461244fde"
+			CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+			INSTALL_DIR "${DEPS_ROOT}"
+		)
+	else()
+		find_package(FLEX REQUIRED)
+		add_custom_target(flex)
+	endif()
+	if (NOT WITH_SYSTEM_BISON)
+		ExternalProject_Add(bison
+			URL "http://ftp.gnu.org/gnu/bison/bison-3.0.4.tar.gz"
+			URL_MD5 "a586e11cd4aff49c3ff6d3b6a4c9ccf8"
+			CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+			INSTALL_DIR "${DEPS_ROOT}"
+		)
+	else()
+		find_package(BISON REQUIRED)
+		add_custom_target(bison)
+	endif()
+	set($ENV{LD_LIBRARY_PATH} "${DEPS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}")
+	set($ENV{PATH} "${DEPS_ROOT}/bin:$ENV{PATH}")
 	ExternalProject_Add(libpcap
-		URL "http://www.tcpdump.org/release/libpcap-1.6.2.tar.gz"
-		URL_MD5 "5f14191c1a684a75532c739c2c4059fa"
-		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --disable-shared      --disable-dbus --disable-can         --disable-canusb      --disable-bluetooth --disable-universal   --disable-ipv6        --disable-protochain --disable-largefile  --without-libnl
+		URL "http://www.tcpdump.org/release/libpcap-1.7.2.tar.gz"
+		URL_MD5 "4747281d4e3ebdb78bc88cdccd3ca5f7"
+		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+		                                         --disable-shared
+		                                         --disable-dbus
+		                                         --disable-can
+		                                         --disable-canusb
+		                                         --disable-bluetooth
+		                                         --disable-universal
+		                                         --disable-ipv6
+		                                         --disable-protochain
+		                                         --disable-largefile
+		                                         --disable-yydebug
+		                                         --disable-packet-ring
+		                                         --without-libnl
+		                                         --without-dag
+		                                         --without-septel
+		                                         --with-pcap=linux
+		                                         --with-flex
+		                                         --with-bison
 		INSTALL_DIR "${DEPS_ROOT}"
+		DEPENDS bison flex
 	)
-	set(Pcap_INCLUDE_DIR ${DEPS_ROOT}/include)
-	set(Pcap_LIBRARIES ${DEPS_ROOT}/lib/libpcap.a)
+	set(PCAP_INCLUDE_DIR ${DEPS_ROOT}/include)
+	set(PCAP_LIBRARIES ${DEPS_ROOT}/lib/libpcap.a)
 else()
 	find_package(Pcap REQUIRED)
+	add_custom_target(libpcap)
 endif()
-include_directories(${Pcap_INCLUDE_DIR})
+include_directories(${PCAP_INCLUDE_DIR})
 
 ########################################################################
 # libnids
 
 if(NOT WITH_SYSTEM_NIDS)
-	include(ExternalProject)
 	ExternalProject_Add(libnids
 		URL "http://sourceforge.net/projects/libnids/files/libnids/1.24/libnids-1.24.tar.gz/download"
 		URL_MD5 "72d37c79c85615ffe158aa524d649610"
@@ -79,13 +124,12 @@ else()
 	find_package(NIDS REQUIRED)
 endif()
 include_directories(${NIDS_INCLUDE_DIR})
-list(APPEND LIBRARIES ${NIDS_LIBRARIES} ${Pcap_LIBRARIES})
+list(APPEND LIBRARIES ${NIDS_LIBRARIES} ${PCAP_LIBRARIES})
 
 ########################################################################
 # libevent
 
 if(NOT WITH_SYSTEM_LIBEVENT)
-	include(ExternalProject)
 	ExternalProject_Add(libevent
 		URL "https://github.com/libevent/libevent/archive/release-2.0.22-stable.tar.gz"
 		URL_MD5 "8913ef56ec329f2c046007bd634c7201"
@@ -99,7 +143,7 @@ else()
 	find_package(Event REQUIRED)
 endif()
 include_directories(${Event_INCLUDE_DIR})
-list(APPEND LIBRARIES ${Event_LIBRARIES})
+list(APPEND LIBRARIES ${Event_LIBRARIES} -lrt)
 
 ########################################################################
 # NxSocket
@@ -202,7 +246,7 @@ if(WITH_TESTS)
 	set(TEST test_${PROJECT_NAME})
 	add_executable(${TEST} ${SOURCES_TEST})
 	if(NOT WIN32)
-		SET_TARGET_PROPERTIES(${TEST} 
+		SET_TARGET_PROPERTIES(${TEST}
 			PROPERTIES LINK_FLAGS -pthread)
 	endif(NOT WIN32)
 	set_target_properties("${TEST}" PROPERTIES COMPILE_FLAGS "-std=c++0x")
