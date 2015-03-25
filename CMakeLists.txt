@@ -21,8 +21,8 @@ option(WITH_SYSTEM_LIBNIDS  "Use system's libnids" OFF)
 project(pcaproxy)
 
 set(pcaproxy_VERSION_MAJOR 0)
-set(pcaproxy_VERSION_MINOR 1)
-set(pcaproxy_VERSION_PATCH 0)
+set(pcaproxy_VERSION_MINOR 2)
+set(pcaproxy_VERSION_PATCH 1)
 # configuration header
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/pcaproxy_config.cfg"

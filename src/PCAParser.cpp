@@ -214,7 +214,7 @@ void
 PCAParser::splitHttp()
 {
 	std::vector<std::string> rsp_fnames;
-	if (!wheel_dir(parse_dir_, std::back_inserter(rsp_fnames), std::regex(".*\\.rsp$")))
+	if (!wheel_dir(parse_dir_, std::back_inserter(rsp_fnames), ".rsp"))
 	{
 		ELOG << _("PCAParser: error reading direcotry.")
 		     << _(" Dirname: \"") << parse_dir_  << "\"";
