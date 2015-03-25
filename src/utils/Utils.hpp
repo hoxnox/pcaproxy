@@ -10,7 +10,6 @@
 #include <cstring>
 #include <algorithm>
 #include <locale>
-#include <regex>
 #include <fstream>
 #include <dirent.h>
 
@@ -80,7 +79,7 @@ trim(std::string s)
 }
 
 template<class OutputIterator> bool
-wheel_dir(std::string dirname, OutputIterator out, std::regex filter = std::regex())
+wheel_dir(std::string dirname, OutputIterator out, const std::string suffix)
 {
 	std::vector<std::string> rsp_fnames;
 	DIR *dir = opendir(dirname.c_str());
@@ -90,8 +89,14 @@ wheel_dir(std::string dirname, OutputIterator out, std::regex filter = std::rege
 	for (dirent *ent = readdir(dir); ent != NULL; ent = readdir(dir))
 	{
 		std::string fname(dirname + "/" + ent->d_name);
-		if (regex_match(fname, filter))
-			*out++ = fname;
+		size_t fnamelen = strlen(ent->d_name);
+		if (fnamelen < suffix.length())
+			continue;
+		size_t pos = fnamelen - suffix.length();
+		for (size_t i = 0; i < suffix.length(); ++i)
+			if (suffix[i] != ent->d_name[pos + i])
+				continue;
+		*out++ = fname;
 	}
 	closedir(dir);
 	return true;
