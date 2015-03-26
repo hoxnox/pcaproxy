@@ -67,7 +67,7 @@ PCAProxy::PCAProxy()
 	: stop_(true)
 	, evbase_(event_base_new(), event_base_free)
 	, evtimeout_(event_new(evbase_.get(), 0, EV_TIMEOUT, heartbeat, this), event_free)
-	, evhttp_(NULL, evhttp_free)
+	, evhttp_(evhttp_new(evbase_.get()), evhttp_free)
 	, evbuf_(evbuffer_new(), evbuffer_free)
 {
 }

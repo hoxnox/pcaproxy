@@ -39,7 +39,6 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
 include_directories("${PROJECT_SOURCE_DIR}/src")
 set(DEPS_ROOT "${CMAKE_CURRENT_BINARY_DIR}/deps")
 
-
 ########################################################################
 # threads
 
@@ -56,6 +55,7 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 			CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
 			INSTALL_DIR "${DEPS_ROOT}"
 		)
+		include_directories(${DEPPS_ROOT}/include)
 	else()
 		find_package(FLEX REQUIRED)
 		add_custom_target(flex)
@@ -71,18 +71,15 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 		find_package(BISON REQUIRED)
 		add_custom_target(bison)
 	endif()
-	set($ENV{LD_LIBRARY_PATH} "${DEPS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}")
-	set($ENV{PATH} "${DEPS_ROOT}/bin:$ENV{PATH}")
 	ExternalProject_Add(libpcap
 		URL "http://www.tcpdump.org/release/libpcap-1.7.2.tar.gz"
 		URL_MD5 "4747281d4e3ebdb78bc88cdccd3ca5f7"
-		CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+		CONFIGURE_COMMAND PATH=${DEPS_ROOT}/bin:$ENV{PATH} <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
 		                                         --disable-shared
 		                                         --disable-dbus
 		                                         --disable-can
 		                                         --disable-canusb
 		                                         --disable-bluetooth
-		                                         --disable-universal
 		                                         --disable-ipv6
 		                                         --disable-protochain
 		                                         --disable-largefile
@@ -90,10 +87,9 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 		                                         --disable-packet-ring
 		                                         --without-libnl
 		                                         --without-dag
-		                                         --without-septel
-		                                         --with-pcap=linux
 		                                         --with-flex
 		                                         --with-bison
+		BUILD_COMMAND PATH=${DEPS_ROOT}/bin:$ENV{PATH} make
 		INSTALL_DIR "${DEPS_ROOT}"
 		DEPENDS bison flex
 	)

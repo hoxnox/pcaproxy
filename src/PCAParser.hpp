@@ -49,8 +49,8 @@ private:
 template<class OutIter> inline void
 PCAParser::GetMainReqs(OutIter out) const 
 {
-	std::for_each(main_reqs_.begin(), main_reqs_.end(),
-			[&out](const HttpReqInfo& req) { *out++ = req.Url(); });
+	for (auto i = main_reqs_.begin(); i != main_reqs_.end(); ++i)
+		*out++ = i->Url();
 }
 
 } // namespace
