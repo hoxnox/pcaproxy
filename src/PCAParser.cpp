@@ -27,7 +27,7 @@
 
 namespace pcaproxy {
 
-PCAParser::Ptr PCAParser::instance_(NULL);
+PCAParser::Ptr PCAParser::instance_;
 std::vector<HttpReqInfo> PCAParser::main_reqs_;
 
 void
