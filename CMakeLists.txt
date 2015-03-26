@@ -25,7 +25,7 @@ project(pcaproxy)
 
 set(pcaproxy_VERSION_MAJOR 0)
 set(pcaproxy_VERSION_MINOR 2)
-set(pcaproxy_VERSION_PATCH 1)
+set(pcaproxy_VERSION_PATCH 3)
 # configuration header
 configure_file(
 	"${PROJECT_SOURCE_DIR}/src/pcaproxy_config.cfg"
@@ -38,6 +38,7 @@ set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}"
 
 include_directories("${PROJECT_SOURCE_DIR}/src")
 set(DEPS_ROOT "${CMAKE_CURRENT_BINARY_DIR}/deps")
+set(ENV{PATH} "${DEPS_ROOT}/bin:$ENV{PATH}")
 
 ########################################################################
 # threads
@@ -55,7 +56,6 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 			CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
 			INSTALL_DIR "${DEPS_ROOT}"
 		)
-		include_directories(${DEPPS_ROOT}/include)
 	else()
 		find_package(FLEX REQUIRED)
 		add_custom_target(flex)
@@ -74,7 +74,7 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 	ExternalProject_Add(libpcap
 		URL "http://www.tcpdump.org/release/libpcap-1.7.2.tar.gz"
 		URL_MD5 "4747281d4e3ebdb78bc88cdccd3ca5f7"
-		CONFIGURE_COMMAND PATH=${DEPS_ROOT}/bin:$ENV{PATH} <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
+		CONFIGURE_COMMAND PATH=$ENV{PATH} <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
 		                                         --disable-shared
 		                                         --disable-dbus
 		                                         --disable-can
@@ -89,7 +89,7 @@ if(NOT WITH_SYSTEM_LIBPCAP)
 		                                         --without-dag
 		                                         --with-flex
 		                                         --with-bison
-		BUILD_COMMAND PATH=${DEPS_ROOT}/bin:$ENV{PATH} make
+		BUILD_COMMAND PATH=$ENV{PATH} make
 		INSTALL_DIR "${DEPS_ROOT}"
 		DEPENDS bison flex
 	)
